@@ -1,25 +1,54 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import { WorkitemProvider } from './workitemProvider';
+import { AdoService } from './services/adoService';
+import { MarkdownParser } from './services/markdownParser';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+	// 初始化服务
+	const adoService = new AdoService();
+	const markdownParser = new MarkdownParser();
+	
+	// 创建 TreeView Provider
+	const workitemProvider = new WorkitemProvider(adoService, markdownParser);
+	vscode.window.registerTreeDataProvider('adoWorkitems', workitemProvider);
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "ado-synchronizer" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('ado-synchronizer.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from ado-synchronizer!');
+	// 注册刷新命令
+	let refreshCommand = vscode.commands.registerCommand('markdown-ado-sync.refresh', () => {
+		workitemProvider.refresh();
 	});
 
-	context.subscriptions.push(disposable);
+	// 注册配置扫描路径命令
+	let configureScanPathCommand = vscode.commands.registerCommand('markdown-ado-sync.configureScanPath', async () => {
+		const folders = await vscode.window.showOpenDialog({
+			canSelectFiles: false,
+			canSelectFolders: true,
+			canSelectMany: false,
+			title: '选择要扫描的 Markdown 文件目录'
+		});
+		
+		if (folders && folders[0]) {
+			const config = vscode.workspace.getConfiguration('markdown-ado-sync');
+			await config.update('scanPath', folders[0].fsPath, vscode.ConfigurationTarget.Global);
+			workitemProvider.refresh();
+			vscode.window.showInformationMessage(`扫描路径已设置为: ${folders[0].fsPath}`);
+		}
+	});
+
+	// 注册同步命令
+	let syncCommand = vscode.commands.registerCommand('markdown-ado-sync.sync', async () => {
+		try {
+				await workitemProvider.syncWorkitems();
+				vscode.window.showInformationMessage('同步完成！');
+		} catch (error) {
+				vscode.window.showErrorMessage(`同步失败: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	});
+
+	context.subscriptions.push(syncCommand, configureScanPathCommand, refreshCommand);
 }
 
 // This method is called when your extension is deactivated
