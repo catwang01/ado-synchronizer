@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { WorkitemProvider, WorkitemItem } from './workitemProvider';
 import { AdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
+import * as chokidar from 'chokidar';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -15,6 +16,59 @@ export function activate(context: vscode.ExtensionContext) {
 	// 创建 TreeView Provider
 	const workitemProvider = new WorkitemProvider(adoService, markdownParser);
 	vscode.window.registerTreeDataProvider('adoWorkitems', workitemProvider);
+
+	let watcher: chokidar.FSWatcher | undefined;
+
+	function startWatcher() {
+		if (watcher) {
+			watcher.close();
+		}
+
+		const config = vscode.workspace.getConfiguration('markdown-ado-sync');
+		const scanPath = config.get<string>('scanPath');
+
+		if (scanPath) {
+			vscode.window.showInformationMessage(`Scanning path: ${scanPath}`);
+			// TODO: only watch .md, .MD, .markdown files
+			watcher = chokidar.watch(scanPath, {
+				persistent: true,
+				ignoreInitial: true,
+				awaitWriteFinish: {
+					stabilityThreshold: 300,
+					pollInterval: 100
+				},
+				ignorePermissionErrors: true // Ignore permission errors
+			});
+
+			// 使用 FSWatcher 的 on 方法
+			(watcher as any)
+				.on('change', async (path: string) => {
+					vscode.window.showInformationMessage(`File changed: ${path}`);
+					// await workitemProvider.refreshItem(path);
+					workitemProvider.refresh();
+				})
+				.on('add', async (path: string) => {
+					vscode.window.showInformationMessage(`File created: ${path}`);
+					workitemProvider.refresh();
+				})
+				.on('unlink', async (path: string) => {
+					vscode.window.showInformationMessage(`File deleted: ${path}`);
+					workitemProvider.refresh();
+				});
+		}
+	}
+
+	// 初始启动监听器
+	startWatcher();
+
+	// 监听配置变化，重启监听器
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('markdown-ado-sync.scanPath')) {
+				startWatcher();
+			}
+		})
+	);
 
 	// 注册刷新命令
 	let refreshCommand = vscode.commands.registerCommand('markdown-ado-sync.refresh', () => {
@@ -67,6 +121,15 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(syncCommand, configureScanPathCommand, refreshCommand, syncSingleCommand);
+
+	// 注册清理函数
+	context.subscriptions.push({
+		dispose: () => {
+			if (watcher) {
+				watcher.close();
+			}
+		}
+	});
 }
 
 // This method is called when your extension is deactivated

@@ -3,16 +3,48 @@ import { AdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
 
 export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<WorkitemItem | undefined | null | void> = new vscode.EventEmitter<WorkitemItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<WorkitemItem | undefined | null | void> = this._onDidChangeTreeData.event;
+    private _onDidChangeTreeData: vscode.EventEmitter<WorkitemItem | undefined> = new vscode.EventEmitter<WorkitemItem | undefined>();
+    readonly onDidChangeTreeData: vscode.Event<WorkitemItem | undefined> = this._onDidChangeTreeData.event;
+
+    private itemMap: Map<string, WorkitemItem> = new Map();
 
     constructor(
         private adoService: AdoService,
         private markdownParser: MarkdownParser
     ) {}
 
-    refresh(): void {
-        this._onDidChangeTreeData.fire();
+    refresh(filePath?: string): void {
+        if (filePath) {
+            const item = this.itemMap.get(filePath);
+            if (item) {
+                this._onDidChangeTreeData.fire(item);
+            }
+        } else {
+            this._onDidChangeTreeData.fire(undefined);
+        }
+    }
+
+    async refreshItem(filePath: string): Promise<void> {
+        try {
+            const metadata = await this.markdownParser.parseMetadata(filePath);
+            const item = new WorkitemItem(
+                metadata.title,
+                vscode.TreeItemCollapsibleState.None,
+                {
+                    command: 'vscode.open',
+                    title: '打开文件',
+                    arguments: [vscode.Uri.file(filePath)]
+                },
+                filePath,
+                metadata.state
+            );
+            this.itemMap.set(filePath, item);
+            this._onDidChangeTreeData.fire(item);
+        } catch (error) {
+            // 如果文件读取失败，从 Map 中移除并刷新整个视图
+            this.itemMap.delete(filePath);
+            this._onDidChangeTreeData.fire(undefined);
+        }
     }
 
     getTreeItem(element: WorkitemItem): vscode.TreeItem {
@@ -26,6 +58,9 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
 
         const config = vscode.workspace.getConfiguration('markdown-ado-sync');
         const scanPath = config.get<string>('scanPath');
+
+        // 清理 itemMap
+        this.itemMap.clear();
 
         if (!scanPath) {
             return [new WorkitemItem(
@@ -43,7 +78,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             const workitems = await Promise.all(
                 files.map(async (file: string) => {
                     const metadata = await this.markdownParser.parseMetadata(file);
-                    return new WorkitemItem(
+                    const item = new WorkitemItem(
                         metadata.title,
                         vscode.TreeItemCollapsibleState.None,
                         {
@@ -54,6 +89,8 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                         file,
                         metadata.state
                     );
+                    this.itemMap.set(file, item);
+                    return item;
                 })
             );
             return workitems;
