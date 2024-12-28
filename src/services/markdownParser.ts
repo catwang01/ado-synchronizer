@@ -6,7 +6,7 @@ export interface Metadata {
     title: string;
     workitemId?: number;
     type?: string;
-    state?: string;
+    state: string;
 }
 
 export class MarkdownParser {
@@ -32,7 +32,8 @@ export class MarkdownParser {
             const content = await fs.readFile(filePath, 'utf-8');
             const lines = content.split('\n');
             const metadata: Metadata = {
-                title: path.basename(filePath, '.md')
+                title: path.basename(filePath, '.md'),
+                state: 'NotSpecified'
             };
 
             // 查找元数据部分

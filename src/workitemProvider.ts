@@ -51,7 +51,8 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                             title: '打开文件',
                             arguments: [vscode.Uri.file(file)]
                         },
-                        file
+                        file,
+                        metadata.state
                     );
                 })
             );
@@ -77,14 +78,70 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
     }
 }
 
+// ADO 工作项状态及其对应的图标
+const StateIcons = {
+    // 特殊状态
+    'NotSpecified': '$(question)',  // 使用问号图标表示未指定状态
+
+    // Bug 状态
+    'Active': '$(bug)',
+    'Resolved': '$(check)',
+    'Closed': '$(pass)',
+
+    // Task 状态
+    'To Do': '$(circle-outline)',
+    'Doing': '$(sync)',
+    'Done': '$(check)',
+
+    // User Story 状态
+    'New': '$(circle-outline)',
+    'In Progress': '$(sync)',
+    'Completed': '$(check)',
+
+    // Feature 状态
+    'Proposed': '$(circle-outline)',
+    'In Review': '$(eye)',
+    'Under Development': '$(sync)',
+    'Complete': '$(check)',
+    'Removed': '$(x)',
+
+    // Epic 状态
+    'Backlog': '$(circle-outline)',
+    'Committed': '$(sync)',
+    'Started': '$(play)',
+    'Finished': '$(check)',
+    'Cut': '$(x)',
+
+    // Issue 状态
+    'Open': '$(warning)',
+    'Investigation': '$(search)',
+    'Fixed': '$(check)',
+
+    // 默认状态
+    'default': '$(circle-outline)'
+} as const;
+
+type WorkItemState = keyof typeof StateIcons;
+
 export class WorkitemItem extends vscode.TreeItem {
     constructor(
         public readonly label: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly command?: vscode.Command,
-        public readonly filePath?: string
+        public readonly filePath?: string,
+        public readonly state?: string
     ) {
         super(label, collapsibleState);
         this.contextValue = filePath ? 'workitem' : undefined;
+
+        // 设置图标
+        if (state) {
+            this.iconPath = new vscode.ThemeIcon(
+                (StateIcons[state as WorkItemState] || StateIcons.default).replace('$(', '').replace(')', '')
+            );
+        }
+
+        // 设置工具提示，显示状态信息
+        this.tooltip = state ? `${label} (${state})` : label;
     }
 } 
