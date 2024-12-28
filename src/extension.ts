@@ -1,7 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { WorkitemProvider } from './workitemProvider';
+import { WorkitemProvider, WorkitemItem } from './workitemProvider';
 import { AdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
 
@@ -40,15 +40,33 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册同步命令
 	let syncCommand = vscode.commands.registerCommand('markdown-ado-sync.sync', async () => {
+		const answer = await vscode.window.showWarningMessage(
+			'确定要同步所有工作项吗？',
+			{ modal: true },
+			'确定',
+			'取消'
+		);
+
+		if (answer !== '确定') {
+			return;
+		}
+
 		try {
-				await workitemProvider.syncWorkitems();
-				vscode.window.showInformationMessage('同步完成！');
+			await workitemProvider.syncWorkitems();
+			vscode.window.showInformationMessage('同步完成！');
 		} catch (error) {
-				vscode.window.showErrorMessage(`同步失败: ${error instanceof Error ? error.message : String(error)}`);
+			vscode.window.showErrorMessage(`同步失败: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	});
 
-	context.subscriptions.push(syncCommand, configureScanPathCommand, refreshCommand);
+	// 注册单个工作项同步命令
+	let syncSingleCommand = vscode.commands.registerCommand('markdown-ado-sync.syncSingle', async (item: WorkitemItem) => {
+		if (item.filePath) {
+			await workitemProvider.syncSingleWorkitem(item.filePath);
+		}
+	});
+
+	context.subscriptions.push(syncCommand, configureScanPathCommand, refreshCommand, syncSingleCommand);
 }
 
 // This method is called when your extension is deactivated

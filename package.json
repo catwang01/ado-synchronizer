@@ -15,7 +15,13 @@
     "commands": [
       {
         "command": "markdown-ado-sync.sync",
-        "title": "同步 Markdown 到 ADO Workitems"
+        "title": "同步所有",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "markdown-ado-sync.syncSingle",
+        "title": "同步此工作项",
+        "icon": "$(cloud-upload)"
       },
       {
         "command": "markdown-ado-sync.configureScanPath",
@@ -33,6 +39,18 @@
           "command": "markdown-ado-sync.refresh",
           "when": "view == adoWorkitems",
           "group": "navigation"
+        },
+        {
+          "command": "markdown-ado-sync.sync",
+          "when": "view == adoWorkitems",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "markdown-ado-sync.syncSingle",
+          "when": "view == adoWorkitems && viewItem == workitem",
+          "group": "inline"
         }
       ]
     },

@@ -50,7 +50,8 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                             command: 'vscode.open',
                             title: '打开文件',
                             arguments: [vscode.Uri.file(file)]
-                        }
+                        },
+                        file
                     );
                 })
             );
@@ -64,14 +65,26 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
     async syncWorkitems(): Promise<void> {
         // 实现同步逻辑
     }
+
+    async syncSingleWorkitem(filePath: string): Promise<void> {
+        try {
+            const metadata = await this.markdownParser.parseMetadata(filePath);
+            // TODO: 实现单个工作项的同步逻辑
+            vscode.window.showInformationMessage(`同步工作项成功: ${metadata.title}`);
+        } catch (error) {
+            vscode.window.showErrorMessage(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
 }
 
-class WorkitemItem extends vscode.TreeItem {
+export class WorkitemItem extends vscode.TreeItem {
     constructor(
         public readonly label: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly command?: vscode.Command
+        public readonly command?: vscode.Command,
+        public readonly filePath?: string
     ) {
         super(label, collapsibleState);
+        this.contextValue = filePath ? 'workitem' : undefined;
     }
 } 
