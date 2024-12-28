@@ -5,6 +5,7 @@ import { WorkitemProvider, WorkitemItem } from './workitemProvider';
 import { AdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
 import * as chokidar from 'chokidar';
+import { log } from './utils';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -28,7 +29,7 @@ export function activate(context: vscode.ExtensionContext) {
 		const scanPath = config.get<string>('scanPath');
 
 		if (scanPath) {
-			vscode.window.showInformationMessage(`Scanning path: ${scanPath}`);
+			log(`Scanning path: ${scanPath}`);
 			// TODO: only watch .md, .MD, .markdown files
 			watcher = chokidar.watch(scanPath, {
 				persistent: true,
@@ -43,16 +44,16 @@ export function activate(context: vscode.ExtensionContext) {
 			// 使用 FSWatcher 的 on 方法
 			(watcher as any)
 				.on('change', async (path: string) => {
-					vscode.window.showInformationMessage(`File changed: ${path}`);
+					log(`File changed: ${path}`);
 					// await workitemProvider.refreshItem(path);
 					workitemProvider.refresh();
 				})
 				.on('add', async (path: string) => {
-					vscode.window.showInformationMessage(`File created: ${path}`);
+					log(`File created: ${path}`);
 					workitemProvider.refresh();
 				})
 				.on('unlink', async (path: string) => {
-					vscode.window.showInformationMessage(`File deleted: ${path}`);
+					log(`File deleted: ${path}`);
 					workitemProvider.refresh();
 				});
 		}

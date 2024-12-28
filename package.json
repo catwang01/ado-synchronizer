@@ -80,6 +80,11 @@
           "default": "",
           "description": "要扫描的 Markdown 文件目录路径"
         },
+        "markdown-ado-sync.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用调试模式，显示更多日志信息"
+        },
         "markdown-ado-sync.adoToken": {
           "type": "string",
           "default": "",
