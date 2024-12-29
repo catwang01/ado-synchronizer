@@ -15,6 +15,10 @@ export interface Metadata {
 export interface CommentSection {
     id?: string;  // ADO comment ID
     text: string;
+    lineRange?: {
+        start: number;
+        end: number;
+    };
 }
 
 export interface ParsedMarkdown {
@@ -179,29 +183,52 @@ export class MarkdownParser {
     parseContent(content: string): ParsedMarkdown {
         const sections = content.split(/\n===+\n/);
         const firstSection = sections[0];
-        const remainingSections = sections.slice(1);
 
         const metadata = this.parseMetadataFromContent(firstSection);
         const description = this.getDescriptionFromContent(firstSection);
 
-        // 解析评论部分，支持评论ID
-        const comments = remainingSections.map(section => {
-            const lines = section.trim().split('\n');
-            let commentId: string | undefined;
-            let commentText: string = section.trim();
+        // 解析评论部分
+        const comments: CommentSection[] = [];
+        const lines = content.split('\n');
+        let currentComment: CommentSection | null = null;
+        let commentStartLine = 0;
 
-            // 检查第一行是否包含评论ID
-            const firstLine = lines[0];
-            if (firstLine?.startsWith('<!--comment-id:')) {
-                commentId = firstLine.match(/<!--comment-id:(.*?)-->/)?.[1]?.trim();
-                commentText = lines.slice(1).join('\n').trim();
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.startsWith('===')) {
+                if (currentComment) {
+                    currentComment.lineRange = {
+                        start: commentStartLine,
+                        end: i - 1
+                    };
+                    comments.push(currentComment);
+                }
+                currentComment = { text: '' };
+                commentStartLine = i + 1;
+
+                // 检查评论ID
+                const nextLine = lines[i + 1];
+                if (nextLine?.startsWith('<!--comment-id:')) {
+                    const match = nextLine.match(/<!--comment-id:(.+)-->/);
+                    if (match) {
+                        currentComment.id = match[1];
+                        i++; // 跳过ID行
+                        commentStartLine++;
+                    }
+                }
+            } else if (currentComment) {
+                currentComment.text += (currentComment.text ? '\n' : '') + line;
             }
+        }
 
-            return {
-                id: commentId,
-                text: commentText
+        // 处理最后一个评论
+        if (currentComment) {
+            currentComment.lineRange = {
+                start: commentStartLine,
+                end: lines.length - 1
             };
-        });
+            comments.push(currentComment);
+        }
 
         return {
             metadata,

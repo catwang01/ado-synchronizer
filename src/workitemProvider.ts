@@ -112,7 +112,7 @@ export class WorkitemItem extends vscode.TreeItem {
     ) {
         const displayLabel = initialState ? `${label} (${initialState})` : label;
         super(displayLabel);
-        
+
         this.syncLogManager = syncLogManager;
         this._workitemId = workitemId;
         this._workitemUrl = workitemUrl;
@@ -158,16 +158,16 @@ export class WorkitemItem extends vscode.TreeItem {
         if (this.isLogEntry) {
             return vscode.TreeItemCollapsibleState.None;
         }
-        return this.filePath && this.syncLogManager?.getLogs(this.filePath).length > 0 
-            ? vscode.TreeItemCollapsibleState.Collapsed 
+        return this.filePath && this.syncLogManager?.getLogs(this.filePath).length > 0
+            ? vscode.TreeItemCollapsibleState.Collapsed
             : vscode.TreeItemCollapsibleState.None;
     }
 
     update(updates: WorkItemUpdate): void {
         // 更新标题和状态
         if (updates.title || updates.state) {
-            const displayLabel = updates.state ? 
-                `${updates.title || this.label} (${updates.state})` : 
+            const displayLabel = updates.state ?
+                `${updates.title || this.label} (${updates.state})` :
                 updates.title;
             if (displayLabel) {
                 this.label = displayLabel;
@@ -203,9 +203,9 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         private markdownParser: MarkdownParser,
         private syncStateManager: SyncStateManager,
         private syncLogManager: ISyncLogManager
-    ) {}
+    ) { }
 
-    private updateItemIcon(filePath: string, status: 'syncing' | 'success' | 'failed' | 'default') {
+    private updateItemIcon(filePath: string, status: 'syncing' | 'success' | 'failed' | 'default' | 'skipped') {
         const item = this.itemMap.get(filePath);
         if (item) {
             if (status === 'syncing') {
@@ -275,7 +275,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         try {
             const metadata = await this.markdownParser.parseMetadata(filePath);
             const existingItem = this.itemMap.get(filePath);
-            
+
             if (existingItem) {
                 existingItem.update({
                     title: metadata.title,
@@ -322,7 +322,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             // 只处理工作项层级：显示日志组
             const logs = this.syncLogManager.getLogs(element.filePath);
             const groupedLogs = new Map<string, SyncLogEntry[]>();
-            
+
             // 按 groupId 分组
             logs.forEach(log => {
                 if (log.groupId) {
@@ -436,10 +436,10 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                     // 跳过的工作项不计入统计
                     skippedItems++;
                 }
-                
-                progress.report({ 
+
+                progress.report({
                     increment: (100 / totalItems),
-                    message: `已同步 ${completedItems}/${totalItems} 个工作项, 失败: ${failedItems} 个, 跳过: ${skippedItems} 个` 
+                    message: `已同步 ${completedItems}/${totalItems} 个工作项, 失败: ${failedItems} 个, 跳过: ${skippedItems} 个`
                 });
             }
 
@@ -449,23 +449,50 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         });
     }
 
-    async syncComments(workItemId: string, fileComments: CommentSection[], content: string, filePath: string): Promise<void> {
+    async syncComments(workItemId: string, fileComments: CommentSection[], content: string, filePath: string, groupId: string): Promise<void> {
         // 获取现有评论
         const existingComments = await this.adoService.getComments(workItemId);
-        
-        // 创建评论ID到评论的映射
-        const existingCommentMap = new Map(existingComments.map(c => [c.id, c]));
-        const fileCommentMap = new Map(fileComments.filter(c => c.id).map(c => [c.id!, c]));
+        existingComments.sort((a, b) => a.id.localeCompare(b.id));
 
-        // 处理需要更新和删除的评论
-        for (const [id, comment] of existingCommentMap) {
-            const fileComment = fileCommentMap.get(id);
-            if (!fileComment) {
-                // 评论在文件中被删除
-                await this.adoService.deleteComment(workItemId, id);
-            } else if (fileComment.text !== comment.text) {
-                // 评论内容有变化
-                await this.adoService.updateComment(workItemId, id, fileComment.text);
+        // 创建评论ID到评论的映射
+        fileComments.sort((a, b) => a.lineRange?.start! - b.lineRange?.start!);
+        const minLength = Math.min(existingComments.length, fileComments.length);
+        for (let i = 0; i < minLength; i++) {
+            const existingComment = existingComments[i];
+            const fileComment = fileComments[i];
+            await this.adoService.updateComment(workItemId, existingComment.id, fileComment.text);
+            this.syncLogManager.addLog(filePath, {
+                timestamp: Date.now(),
+                status: 'success',
+                message: '更新评论',
+                details: `更新评论: ${fileComment.text.substring(0, 50)}...`,
+                groupId
+            });
+        }
+        if (existingComments.length > fileComments.length) {
+            // 删除多余的评论
+            for (const comment of existingComments.slice(fileComments.length)) {
+                await this.adoService.deleteComment(workItemId, comment.id);
+                this.syncLogManager.addLog(filePath, {
+                    timestamp: Date.now(),
+                    status: 'success',
+                    message: '删除评论',
+                    details: `删除评论: ${comment.text.substring(0, 50)}...`,
+                    groupId
+                });
+            }
+        }
+        if (fileComments.length > existingComments.length) {
+            // 添加新的评论
+            for (const comment of fileComments.slice(existingComments.length)) {
+                await this.adoService.addComment(workItemId, comment.text);
+                this.syncLogManager.addLog(filePath, {
+                    timestamp: Date.now(),
+                    status: 'success',
+                    message: '添加评论',
+                    details: `新评论: ${comment.text.substring(0, 50)}...`,
+                    groupId
+                });
             }
         }
 
@@ -478,34 +505,73 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 const index = fileComments.indexOf(comment);
                 const updatedContent = await this.markdownParser.updateCommentId(content, index, commentId);
                 await fs.promises.writeFile(filePath, updatedContent, 'utf-8');
+
+                this.syncLogManager.addLog(filePath, {
+                    timestamp: Date.now(),
+                    status: 'success',
+                    message: '添加评论',
+                    details: `新评论: ${comment.text.substring(0, 50)}...`,
+                    groupId
+                });
             }
         }
     }
 
     async syncSingleWorkitem(filePath: string): Promise<'success' | 'failed' | 'skipped'> {
-        const groupId = Date.now().toString();  // 使用时间戳作为组ID
+        const groupId = Date.now().toString();
         try {
             this.updateItemIcon(filePath, 'syncing');
-            const startLogId = this.syncLogManager.addLog(filePath, {
+            this.syncLogManager.addLog(filePath, {
                 timestamp: Date.now(),
                 status: 'success',
                 message: '开始同步...',
                 groupId
             });
-
             const content = await fs.promises.readFile(filePath, 'utf-8');
             const { metadata, description, comments } = this.markdownParser.parseContent(content);
+            if (!metadata.state) {
+                this.syncLogManager.addLog(filePath, {
+                    timestamp: Date.now(),
+                    status: 'failed',
+                    message: '同步失败',
+                    details: '工作项状态为空',
+                    groupId
+                });
+                this.updateItemIcon(filePath, 'failed');
+                return 'failed';
+            }
 
             if (metadata.workitemId) {
                 // 更新现有工作项
+                const remoteWorkItem = await this.adoService.getWorkItem(metadata.workitemId);
+                if (remoteWorkItem.state === metadata.state) {
+                    this.syncLogManager.addLog(filePath, {
+                        timestamp: Date.now(),
+                        status: 'skipped',
+                        message: '工作项状态相同，跳过同步',
+                        details: `工作项 ${metadata.workitemId} 状态为 ${metadata.state}`,
+                        groupId
+                    });
+                    this.updateItemIcon(filePath, 'success');
+                    return 'skipped';
+                }
+
                 await this.adoService.updateWorkItem(metadata.workitemId, {
                     title: metadata.title,
                     description: description,
-                    state: metadata.state || ''
+                    state: metadata.state
+                });
+
+                this.syncLogManager.addLog(filePath, {
+                    timestamp: Date.now(),
+                    status: 'success',
+                    message: '更新工作项',
+                    details: `更新工作项 ${metadata.workitemId} 为 ${metadata.state}`,
+                    groupId
                 });
 
                 // 同步评论
-                await this.syncComments(metadata.workitemId, comments, content, filePath);
+                await this.syncComments(metadata.workitemId, comments, content, filePath, groupId);
             } else {
                 // 创建新工作项
                 const id = await this.adoService.createWorkItem(metadata.type || 'Task', {
@@ -526,7 +592,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
 
             // 更新同步状态
             await this.syncStateManager.updateSyncState(filePath, true, metadata.workitemId);
-            
+
             this.syncLogManager.addLog(filePath, {
                 timestamp: Date.now(),
                 status: 'success',
