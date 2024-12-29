@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { WorkitemProvider, WorkitemItem } from './workitemProvider';
-import { AdoService, MockAdoService } from './services/adoService';
+import { AdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
 import * as chokidar from 'chokidar';
 import { log } from './utils';
@@ -19,14 +19,13 @@ export async function activate(context: vscode.ExtensionContext) {
 	const adoToken = config.get<string>('adoToken');
 	const adoOrganization = config.get<string>('adoOrganization');
 	const adoProject = config.get<string>('adoProject');
-	const debug = config.get<boolean>('debug', true); // 默认为 true
-	log(`adoToken: ${adoToken}\nadoOrganization: ${adoOrganization}\nadoProject: ${adoProject}\ndebug: ${debug}`);
+	log(`adoToken: ${adoToken}\nadoOrganization: ${adoOrganization}\nadoProject: ${adoProject}`);
 
 	// 初始化服务
-	const adoService = debug ? new MockAdoService() : new AdoService();
+	const adoService = new AdoService();
 	const markdownParser = new MarkdownParser();
 	const syncStateManager = new SyncStateManager(context);
-	const syncLogManager = new SyncLogManager();
+	const syncLogManager = new SyncLogManager(context);
 
 	if (!await adoService.validateToken()) {
 		try {

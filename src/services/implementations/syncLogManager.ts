@@ -1,9 +1,33 @@
 import { ISyncLogManager, SyncLogEntry } from '../interfaces/ISyncLogManager';
 import { v4 as uuidv4 } from 'uuid';
+import * as vscode from 'vscode';
 
 export class SyncLogManager implements ISyncLogManager {
     private logs: Map<string, SyncLogEntry[]> = new Map();
     private static readonly MAX_LOGS_PER_ITEM = 50;
+    private context: vscode.ExtensionContext;
+
+    constructor(context: vscode.ExtensionContext) {
+        this.context = context;
+        this.loadLogs();
+    }
+
+    private async loadLogs() {
+        const storedLogs = this.context.globalState.get<{ [key: string]: SyncLogEntry[] }>('syncLogs');
+        if (storedLogs) {
+            Object.entries(storedLogs).forEach(([filePath, logs]) => {
+                this.logs.set(filePath, logs);
+            });
+        }
+    }
+
+    private async saveLogs() {
+        const logsObject: { [key: string]: SyncLogEntry[] } = {};
+        this.logs.forEach((value, key) => {
+            logsObject[key] = value;
+        });
+        await this.context.globalState.update('syncLogs', logsObject);
+    }
 
     addLog(filePath: string, entry: Omit<SyncLogEntry, 'id'>): string {
         const id = uuidv4();
@@ -20,6 +44,7 @@ export class SyncLogManager implements ISyncLogManager {
         }
         
         this.logs.set(filePath, logs);
+        this.saveLogs();  // 保存到持久存储
         return id;
     }
 
@@ -34,6 +59,7 @@ export class SyncLogManager implements ISyncLogManager {
 
     clearLogs(filePath: string): void {
         this.logs.delete(filePath);
+        this.saveLogs();  // 保存到持久存储
     }
 
     formatLogEntry(entry: SyncLogEntry): string {
