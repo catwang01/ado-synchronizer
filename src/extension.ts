@@ -6,6 +6,7 @@ import { AdoService, MockAdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
 import * as chokidar from 'chokidar';
 import { log } from './utils';
+import { SyncStateManager } from './services/syncStateManager';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -21,11 +22,11 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 初始化服务
 	const adoService = debug ? new MockAdoService() : new AdoService();
-
 	const markdownParser = new MarkdownParser();
+	const syncStateManager = new SyncStateManager(context);
 	
 	// 创建 TreeView Provider
-	const workitemProvider = new WorkitemProvider(adoService, markdownParser);
+	const workitemProvider = new WorkitemProvider(adoService, markdownParser, syncStateManager);
 	vscode.window.registerTreeDataProvider('adoWorkitems', workitemProvider);
 
 	let watcher: chokidar.FSWatcher | undefined;
@@ -55,16 +56,16 @@ export function activate(context: vscode.ExtensionContext) {
 			(watcher as any)
 				.on('change', async (path: string) => {
 					log(`File changed: ${path}`);
-					// await workitemProvider.refreshItem(path);
-					workitemProvider.refresh();
+					await workitemProvider.refreshModified();
 				})
 				.on('add', async (path: string) => {
 					log(`File created: ${path}`);
-					workitemProvider.refresh();
+					workitemProvider.refreshModified();
 				})
 				.on('unlink', async (path: string) => {
 					log(`File deleted: ${path}`);
-					workitemProvider.refresh();
+					workitemProvider.refreshModified();
+					syncStateManager.deleteSyncState(path);
 				});
 		}
 	}

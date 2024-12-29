@@ -3,6 +3,7 @@ import { IAdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
 import { log } from './utils';
 import { StateIcons, WorkItemState } from './constants/icons';
+import { SyncStateManager } from './services/syncStateManager';
 
 // 私有 symbol 用于存储 provider 引用
 const providerSymbol = Symbol('provider');
@@ -57,7 +58,8 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
 
     constructor(
         private adoService: IAdoService,
-        private markdownParser: MarkdownParser
+        private markdownParser: MarkdownParser,
+        private syncStateManager: SyncStateManager
     ) { }
 
     private updateItemIcon(filePath: string, status: 'syncing' | 'success' | 'failed' | 'default') {
@@ -97,6 +99,30 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             }
         } else {
             this._onDidChangeTreeData.fire(undefined);
+        }
+    }
+
+    async refreshModified(): Promise<void> {
+        const modifiedItems: string[] = [];
+
+        // 检查所有文件是否需要同步
+        for (const [filePath] of this.itemMap) {
+            if (await this.syncStateManager.needsSync(filePath)) {
+                modifiedItems.push(filePath);
+                this.updateItemIcon(filePath, 'default');
+                // 更新 label 显示修改状态
+                const item = this.itemMap.get(filePath);
+                if (item) {
+                    const metadata = await this.markdownParser.parseMetadata(filePath);
+                    const displayLabel = metadata.title + ' (已修改)';
+                    item.label = displayLabel;
+                    this._onDidChangeTreeData.fire(item);
+                }
+            }
+        }
+
+        if (modifiedItems.length > 0) {
+            vscode.window.showInformationMessage(`发现 ${modifiedItems.length} 个已修改的工作项`);
         }
     }
 
@@ -188,10 +214,10 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             title: "同步工作项",
             cancellable: false
         }, async (progress: vscode.Progress<{ message?: string; increment?: number }>) => {
-            try {
-                const totalItemCount = this.itemMap.size;
-                let completedItemCount = 0;
-                let failedItemCount = 0;
+                const totalItems = this.itemMap.size;
+                let completedItems = 0;
+                let failedItems = 0;
+                let skippedItems = 0;
 
                 // 设置所有项目为同步中状态
                 for (const [filePath] of this.itemMap) {
@@ -200,37 +226,49 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
 
                 // 同步每个工作项
                 for (const [filePath] of this.itemMap) {
-                        const success = await this.syncSingleWorkitem(filePath);
-                        if (!success) {
-                            failedItemCount++;
+                    try {
+                        const result = await this.syncSingleWorkitem(filePath);
+                        if (result === 'skipped') {
+                            skippedItems++;
+                        } else if (result === 'failed') {
+                            failedItems++;
                         }
-                        completedItemCount++;
+                        completedItems++;
                         progress.report({ 
-                            increment: (100 / totalItemCount), 
-                            message: `已同步 ${completedItemCount}/${totalItemCount} 个工作项, 失败: ${failedItemCount} 个工作项` 
+                            increment: (100 / totalItems), 
+                            message: `已同步 ${completedItems}/${totalItems} 个工作项, 失败: ${failedItems} 个, 跳过: ${skippedItems} 个` 
                         });
+                    } catch (error) {
+                        failedItems++;
+                        log(`同步工作项失败: ${filePath}, ${error instanceof Error ? error.message : String(error)}`);
+                    }
                 }
-                vscode.window.setStatusBarMessage(`同步工作项完成: ${completedItemCount} 个工作项, 失败: ${failedItemCount} 个工作项`, 5000);
-                log('同步所有工作项完成');
 
-            } catch (error) {
-                // 如果发生整体性错误，将所有项目设置为失败状态
-                for (const [filePath] of this.itemMap) {
-                    this.updateItemIcon(filePath, 'failed');
+                if (failedItems > 0) {
+                    vscode.window.showErrorMessage('部分工作项同步失败，请查看日志了解详情');
+                } else {
+                    vscode.window.showInformationMessage('所有工作项同步完成！');
                 }
-                log(`同步所有工作项失败: ${error instanceof Error ? error.message : String(error)}`);
-                throw error;
-            }
+
+                log('同步所有工作项完成');
         });
     }
 
-    async syncSingleWorkitem(filePath: string): Promise<boolean> {
+    async syncSingleWorkitem(filePath: string): Promise<'success' | 'failed' | 'skipped'> {
         return vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: "同步工作项",
             cancellable: false
         }, async (progress: vscode.Progress<{ message?: string; increment?: number }>) => {
             try {
+                // 检查是否需要同步
+                if (!await this.syncStateManager.needsSync(filePath)) {
+                    log(`跳过同步，文件未修改: ${filePath}`);
+                    // 1 秒后更新图标, 避免跳过 syncing 状态直接到 success 状态
+                    setTimeout(() => this.updateItemIcon(filePath, 'success'), 1000);
+                    return 'skipped';
+                }
+
                 const metadata = await this.markdownParser.parseMetadata(filePath);
                 log(`开始同步工作项: ${metadata.title}`);
                 this.updateItemIcon(filePath, 'syncing');
@@ -247,26 +285,29 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                         description: markdownContent,
                         state: metadata.state
                     });
+                    await this.syncStateManager.updateSyncState(filePath, true, metadata.workitemId);
                 } else {
                     const type = metadata.type || 'Task'; // 默认创建 Task 类型
-                    await this.adoService.createWorkItem(type, {
+                    const newId = await this.adoService.createWorkItem(type, {
                         title: metadata.title,
                         description: markdownContent,
                         state: metadata.state
                     });
+                    await this.syncStateManager.updateSyncState(filePath, true, newId);
                 }
                 
                 progress.report({ increment: 40, message: "同步完成" });
                 log(`同步工作项完成: ${metadata.title}`);
                 this.updateItemIcon(filePath, 'success');
                 vscode.window.showInformationMessage(`同步工作项成功: ${metadata.title}`);
-                return true;
+                return 'success';
             } catch (error) {
                 this.updateItemIcon(filePath, 'failed');
+                await this.syncStateManager.updateSyncState(filePath, false);
                 log(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
                 vscode.window.showErrorMessage(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
-                return false;
+                return 'failed';
             }
         });
     }
-} 
+}
