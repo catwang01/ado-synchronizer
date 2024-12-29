@@ -11,14 +11,17 @@ export class WorkitemItem extends vscode.TreeItem {
     private _state: string | undefined;
 
     constructor(
-        public readonly label: string,
+        label: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly command?: vscode.Command,
         public readonly filePath?: string,
         initialState?: string,
         provider?: WorkitemProvider
     ) {
-        super(label, collapsibleState);
+        // 在 label 中显示状态
+        const displayLabel = initialState ? `${label} (${initialState})` : label;
+        super(displayLabel, collapsibleState);
+        
         this.contextValue = filePath ? 'workitem' : undefined;
         this._state = initialState;
         
@@ -27,17 +30,15 @@ export class WorkitemItem extends vscode.TreeItem {
             this[providerSymbol] = provider;
         }
 
-        // 设置图标
+        // 设置图标 - 只显示同步状态
         if (filePath && provider?.syncingItems.has(filePath)) {
-            this.iconPath = new vscode.ThemeIcon(StateIcons.Syncing.replace('$(', '').replace(')', ''));
-        } else if (this._state) {
-            this.iconPath = new vscode.ThemeIcon(
-                (StateIcons[this._state as WorkItemState] || StateIcons.default).replace('$(', '').replace(')', '')
-            );
+            this.iconPath = new vscode.ThemeIcon('sync~spin');
+        } else {
+            this.iconPath = new vscode.ThemeIcon('circle-outline');
         }
 
-        // 设置工具提示，显示状态信息
-        this.tooltip = this._state ? `${label} (${this._state})` : label;
+        // 设置工具提示
+        this.tooltip = displayLabel;
     }
 
     get workItemState(): string | undefined {
@@ -59,26 +60,39 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         private markdownParser: MarkdownParser
     ) {}
 
-    private updateItemIcon(filePath: string, isSyncing: boolean) {
+    private updateItemIcon(filePath: string, status: 'syncing' | 'success' | 'failed' | 'default') {
         const item = this.itemMap.get(filePath);
         if (item) {
-            if (isSyncing) {
+            if (status === 'syncing') {
                 this.syncingItems.add(filePath);
             } else {
                 this.syncingItems.delete(filePath);
             }
             
             // 更新图标
-            if (isSyncing) {
-                item.iconPath = new vscode.ThemeIcon(StateIcons.Syncing.replace('$(', '').replace(')', ''));
-            } else if (item.workItemState) {
-                item.iconPath = new vscode.ThemeIcon(
-                    (StateIcons[item.workItemState as WorkItemState] || StateIcons.default).replace('$(', '').replace(')', '')
-                );
+            switch (status) {
+                case 'syncing':
+                    item.iconPath = new vscode.ThemeIcon('sync~spin');
+                    break;
+                case 'success':
+                    item.iconPath = new vscode.ThemeIcon('check');
+                    break;
+                case 'failed':
+                    item.iconPath = new vscode.ThemeIcon('error');
+                    break;
+                default:
+                    item.iconPath = new vscode.ThemeIcon('circle-outline');
             }
             
             // 强制刷新这个项目
             this._onDidChangeTreeData.fire(item);
+
+            // 如果是成功或失败状态，2秒后恢复原始图标
+            if (status === 'success' || status === 'failed') {
+                setTimeout(() => {
+                    this.updateItemIcon(filePath, 'default');
+                }, 2000);
+            }
         }
     }
 
@@ -187,7 +201,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 
                 // 将所有项目标记为同步中
                 for (const [filePath] of this.itemMap) {
-                    this.updateItemIcon(filePath, true);
+                    this.updateItemIcon(filePath, 'syncing');
                 }
 
                 // 模拟同步过程
@@ -195,14 +209,14 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 progress.report({ increment: 100, message: "同步完成" });
                 log('同步所有工作项完成');
                 
-                // 同步成功后，恢复所有项目的图标
+                // 同步成功后，显示成功图标
                 for (const [filePath] of this.itemMap) {
-                    this.updateItemIcon(filePath, false);
+                    this.updateItemIcon(filePath, 'success');
                 }
             } catch (error) {
-                // 同步失败后，恢复所有项目的图标
+                // 同步失败后，显示失败图标
                 for (const [filePath] of this.itemMap) {
-                    this.updateItemIcon(filePath, false);
+                    this.updateItemIcon(filePath, 'failed');
                 }
                 log(`同步所有工作项失败: ${error instanceof Error ? error.message : String(error)}`);
                 throw error;
@@ -219,7 +233,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             try {
                 const metadata = await this.markdownParser.parseMetadata(filePath);
                 log(`开始同步工作项: ${metadata.title}`);
-                this.updateItemIcon(filePath, true);
+                this.updateItemIcon(filePath, 'syncing');
                 
                 progress.report({ increment: 50, message: "正在同步..." });
                 
@@ -228,10 +242,10 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 
                 progress.report({ increment: 50, message: "同步完成" });
                 log(`同步工作项完成: ${metadata.title}`);
-                this.updateItemIcon(filePath, false);
+                this.updateItemIcon(filePath, 'success');
                 vscode.window.showInformationMessage(`同步工作项成功: ${metadata.title}`);
             } catch (error) {
-                this.updateItemIcon(filePath, false);
+                this.updateItemIcon(filePath, 'failed');
                 log(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
                 vscode.window.showErrorMessage(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
             }

@@ -1,6 +1,8 @@
 export const StateIcons = {
     // 同步状态
     'Syncing': '$(sync~spin)',
+    'SyncSuccess': '$(check)',
+    'SyncFailed': '$(error)',
 
     // 特殊状态
     'NotSpecified': '$(question)',  // 使用问号图标表示未指定状态
