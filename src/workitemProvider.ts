@@ -8,16 +8,20 @@ import { StateIcons, WorkItemState } from './constants/icons';
 const providerSymbol = Symbol('provider');
 
 export class WorkitemItem extends vscode.TreeItem {
+    private _state: string | undefined;
+
     constructor(
         public readonly label: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly command?: vscode.Command,
         public readonly filePath?: string,
-        public readonly state?: string,
+        initialState?: string,
         provider?: WorkitemProvider
     ) {
         super(label, collapsibleState);
         this.contextValue = filePath ? 'workitem' : undefined;
+        this._state = initialState;
+        
         if (provider) {
             // @ts-ignore
             this[providerSymbol] = provider;
@@ -25,15 +29,19 @@ export class WorkitemItem extends vscode.TreeItem {
 
         // 设置图标
         if (filePath && provider?.syncingItems.has(filePath)) {
-            this.iconPath = StateIcons.Syncing;
-        } else if (state) {
+            this.iconPath = new vscode.ThemeIcon(StateIcons.Syncing.replace('$(', '').replace(')', ''));
+        } else if (this._state) {
             this.iconPath = new vscode.ThemeIcon(
-                (StateIcons[state as WorkItemState] || StateIcons.default).replace('$(', '').replace(')', '')
+                (StateIcons[this._state as WorkItemState] || StateIcons.default).replace('$(', '').replace(')', '')
             );
         }
 
         // 设置工具提示，显示状态信息
-        this.tooltip = state ? `${label} (${state})` : label;
+        this.tooltip = this._state ? `${label} (${this._state})` : label;
+    }
+
+    get workItemState(): string | undefined {
+        return this._state;
     }
 }
 
@@ -59,6 +67,17 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             } else {
                 this.syncingItems.delete(filePath);
             }
+            
+            // 更新图标
+            if (isSyncing) {
+                item.iconPath = new vscode.ThemeIcon(StateIcons.Syncing.replace('$(', '').replace(')', ''));
+            } else if (item.workItemState) {
+                item.iconPath = new vscode.ThemeIcon(
+                    (StateIcons[item.workItemState as WorkItemState] || StateIcons.default).replace('$(', '').replace(')', '')
+                );
+            }
+            
+            // 强制刷新这个项目
             this._onDidChangeTreeData.fire(item);
         }
     }
@@ -144,6 +163,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                         metadata.state,
                         this
                     );
+                    this.itemMap.set(file, item);
                     return item;
                 })
             );
@@ -156,46 +176,65 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
 
     async syncWorkitems(): Promise<void> {
         log('开始同步所有工作项...');
-        try {
-            // 将所有项目标记为同步中
-            for (const [filePath] of this.itemMap) {
-                this.updateItemIcon(filePath, true);
-            }
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "同步工作项",
+            cancellable: false
+        }, async (progress) => {
+            try {
+                const totalItems = this.itemMap.size;
+                let completedItems = 0;
+                
+                // 将所有项目标记为同步中
+                for (const [filePath] of this.itemMap) {
+                    this.updateItemIcon(filePath, true);
+                }
 
-            // 模拟同步过程
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            log('同步所有工作项完成');
-            
-            // 同步成功后，恢复所有项目的图标
-            for (const [filePath] of this.itemMap) {
-                this.updateItemIcon(filePath, false);
+                // 模拟同步过程
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                progress.report({ increment: 100, message: "同步完成" });
+                log('同步所有工作项完成');
+                
+                // 同步成功后，恢复所有项目的图标
+                for (const [filePath] of this.itemMap) {
+                    this.updateItemIcon(filePath, false);
+                }
+            } catch (error) {
+                // 同步失败后，恢复所有项目的图标
+                for (const [filePath] of this.itemMap) {
+                    this.updateItemIcon(filePath, false);
+                }
+                log(`同步所有工作项失败: ${error instanceof Error ? error.message : String(error)}`);
+                throw error;
             }
-        } catch (error) {
-            // 同步失败后，恢复所有项目的图标
-            for (const [filePath] of this.itemMap) {
-                this.updateItemIcon(filePath, false);
-            }
-            log(`同步所有工作项失败: ${error instanceof Error ? error.message : String(error)}`);
-            throw error;
-        }
+        });
     }
 
     async syncSingleWorkitem(filePath: string): Promise<void> {
-        try {
-            const metadata = await this.markdownParser.parseMetadata(filePath);
-            log(`开始同步工作项: ${metadata.title}`);
-            this.updateItemIcon(filePath, true);
-            
-            // 模拟同步过程
-            await new Promise(resolve => setTimeout(resolve, 10000));
-            
-            log(`同步工作项完成: ${metadata.title}`);
-            this.updateItemIcon(filePath, false);
-            vscode.window.showInformationMessage(`同步工作项成功: ${metadata.title}`);
-        } catch (error) {
-            this.updateItemIcon(filePath, false);
-            log(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
-            vscode.window.showErrorMessage(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
-        }
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "同步工作项",
+            cancellable: false
+        }, async (progress) => {
+            try {
+                const metadata = await this.markdownParser.parseMetadata(filePath);
+                log(`开始同步工作项: ${metadata.title}`);
+                this.updateItemIcon(filePath, true);
+                
+                progress.report({ increment: 50, message: "正在同步..." });
+                
+                // 模拟同步过程
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                
+                progress.report({ increment: 50, message: "同步完成" });
+                log(`同步工作项完成: ${metadata.title}`);
+                this.updateItemIcon(filePath, false);
+                vscode.window.showInformationMessage(`同步工作项成功: ${metadata.title}`);
+            } catch (error) {
+                this.updateItemIcon(filePath, false);
+                log(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
+                vscode.window.showErrorMessage(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        });
     }
 } 

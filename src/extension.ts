@@ -10,6 +10,15 @@ import { log } from './utils';
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+	// 检查配置
+	const config = vscode.workspace.getConfiguration('markdown-ado-sync');
+	const scanPath = config.get<string>('scanPath');
+	const adoToken = config.get<string>('adoToken');
+	const adoOrganization = config.get<string>('adoOrganization');
+	const adoProject = config.get<string>('adoProject');
+	const debug = config.get<boolean>('debug', true); // 默认为 true
+	log(`adoToken: ${adoToken}\nadoOrganization: ${adoOrganization}\nadoProject: ${adoProject}\ndebug: ${debug}`);
+
 	// 初始化服务
 	const adoService = new AdoService();
 	const markdownParser = new MarkdownParser();

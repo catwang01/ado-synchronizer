@@ -82,7 +82,7 @@
         },
         "markdown-ado-sync.debug": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "启用调试模式，显示更多日志信息"
         },
         "markdown-ado-sync.adoToken": {
