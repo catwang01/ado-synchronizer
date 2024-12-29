@@ -4,7 +4,7 @@ import { MarkdownParser, Metadata, CommentSection } from './services/markdownPar
 import { log } from './utils';
 import { SyncStateManager } from './services/syncStateManager';
 import * as fs from 'fs';
-import { ISyncLogManager } from './services/interfaces/ISyncLogManager';
+import { ISyncLogManager, SyncLogEntry } from './services/interfaces/ISyncLogManager';
 
 // 私有 symbol 用于存储 provider 引用
 const providerSymbol = Symbol('provider');
@@ -29,6 +29,9 @@ export class WorkitemItem extends vscode.TreeItem {
     private _type?: string;
     private _filePath?: string;
     private _isLogEntry: boolean;
+    private _logEntryId?: string;
+    private _logGroupId?: string;
+    private _isLogGroup: boolean = false;
 
     get workitemId(): string | undefined { return this._workitemId; }
     get workitemUrl(): string | undefined { return this._workitemUrl; }
@@ -36,6 +39,9 @@ export class WorkitemItem extends vscode.TreeItem {
     get filePath(): string | undefined { return this._filePath; }
     get isLogEntry(): boolean { return this._isLogEntry; }
     get workItemState(): string | undefined { return this._state; }
+    get logEntryId(): string | undefined { return this._logEntryId; }
+    get logGroupId(): string | undefined { return this._logGroupId; }
+    get isLogGroup(): boolean { return this._isLogGroup; }
 
     static setAdoConfig(organization: string, project: string) {
         WorkitemItem.adoConfig = { organization, project };
@@ -100,6 +106,9 @@ export class WorkitemItem extends vscode.TreeItem {
         workitemUrl?: string,
         type?: string,
         isLogEntry: boolean = false,
+        logEntryId?: string,
+        logGroupId?: string,
+        isLogGroup: boolean = false
     ) {
         const displayLabel = initialState ? `${label} (${initialState})` : label;
         super(displayLabel);
@@ -111,6 +120,9 @@ export class WorkitemItem extends vscode.TreeItem {
         this._filePath = filePath;
         this._isLogEntry = isLogEntry;
         this._state = initialState;
+        this._logEntryId = logEntryId;
+        this._logGroupId = logGroupId;
+        this._isLogGroup = isLogGroup;
 
         // @ts-ignore
         this[providerSymbol] = provider;
@@ -118,7 +130,15 @@ export class WorkitemItem extends vscode.TreeItem {
         this.collapsibleState = this.getCollapsibleState();
 
         // 只有非日志条目才有上下文菜单和命令
-        if (!this.isLogEntry) {
+        if (this.isLogGroup) {
+            // 日志组点击时显示日志内容
+            this.command = {
+                command: 'markdown-ado-sync.showLogs',
+                title: '显示日志',
+                arguments: [this]  // 传递当前项
+            };
+            this.collapsibleState = vscode.TreeItemCollapsibleState.None;  // 日志组不可折叠
+        } else if (!this.isLogEntry) {
             this.contextValue = this.filePath && (this.workitemId || this.workitemUrl) ? 'workitem' : undefined;
             if (this.filePath) {
                 this.command = {
@@ -298,21 +318,40 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
     }
 
     async getChildren(element?: WorkitemItem): Promise<WorkitemItem[]> {
-        if (element?.filePath && !element.isLogEntry) {
-            // 返回同步日志项
+        if (element?.filePath && !element.isLogEntry && !element.isLogGroup) {
+            // 只处理工作项层级：显示日志组
             const logs = this.syncLogManager.getLogs(element.filePath);
-            return logs.map(log => new WorkitemItem(
-                this.syncLogManager.formatLogEntry(log),
-                this.syncLogManager,
-                this,
-                undefined,
-                element.filePath,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                true
-            ));
+            const groupedLogs = new Map<string, SyncLogEntry[]>();
+            
+            // 按 groupId 分组
+            logs.forEach(log => {
+                if (log.groupId) {
+                    const group = groupedLogs.get(log.groupId) || [];
+                    group.push(log);
+                    groupedLogs.set(log.groupId, group);
+                }
+            });
+
+            // 创建日志组项
+            return Array.from(groupedLogs.entries()).map(([groupId, groupLogs]) => {
+                const firstLog = groupLogs[0];
+                const timestamp = new Date(firstLog.timestamp).toLocaleString();
+                return new WorkitemItem(
+                    `同步操作 (${timestamp})`,
+                    this.syncLogManager,
+                    this,
+                    undefined,  // command 会在构造函数中设置
+                    element.filePath,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    false,
+                    undefined,
+                    groupId,
+                    true
+                );
+            });
         }
 
         if (element) {
@@ -444,12 +483,14 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
     }
 
     async syncSingleWorkitem(filePath: string): Promise<'success' | 'failed' | 'skipped'> {
+        const groupId = Date.now().toString();  // 使用时间戳作为组ID
         try {
             this.updateItemIcon(filePath, 'syncing');
-            this.syncLogManager.addLog(filePath, {
+            const startLogId = this.syncLogManager.addLog(filePath, {
                 timestamp: Date.now(),
                 status: 'success',
-                message: '开始同步...'
+                message: '开始同步...',
+                groupId
             });
 
             const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -490,7 +531,8 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 timestamp: Date.now(),
                 status: 'success',
                 message: '同步成功',
-                details: `已更新工作项 ${metadata.workitemId || 'new'}`
+                details: `已更新工作项 ${metadata.workitemId || 'new'}`,
+                groupId
             });
 
             this.updateItemIcon(filePath, 'success');
@@ -500,7 +542,8 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 timestamp: Date.now(),
                 status: 'failed',
                 message: '同步失败',
-                details: error instanceof Error ? error.message : String(error)
+                details: error instanceof Error ? error.message : String(error),
+                groupId
             });
 
             this.updateItemIcon(filePath, 'failed');
@@ -514,5 +557,10 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         if (item) {
             this._onDidChangeTreeData.fire(item);
         }
+    }
+
+    // 添加公共方法来获取日志组
+    public getLogGroup(filePath: string, groupId: string): SyncLogEntry[] {
+        return this.syncLogManager.getLogGroup(filePath, groupId);
     }
 }

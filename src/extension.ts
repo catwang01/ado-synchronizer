@@ -161,15 +161,45 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(syncCommand, configureScanPathCommand, refreshCommand, syncSingleCommand);
+	// 注册显示日志的命令
+	let showLogsCommand = vscode.commands.registerCommand('markdown-ado-sync.showLogs', async (item: WorkitemItem) => {
+		if (!item.filePath || !item.logGroupId) {
+			return;
+		}
+
+		// 使用公共方法获取日志组内容
+		const logs = workitemProvider.getLogGroup(item.filePath, item.logGroupId);
+		
+		// 创建日志内容
+		const content = logs.map(log => {
+			const date = new Date(log.timestamp);
+			const timeStr = date.toLocaleString();
+			let result = `[${timeStr}] ${log.status.toUpperCase()}: ${log.message}`;
+			if (log.details) {
+				result += `\n${log.details}`;
+			}
+			return result;
+		}).join('\n\n');
+
+		// 创建并显示文档
+		const doc = await vscode.workspace.openTextDocument({
+			content,
+			language: 'markdown'
+		});
+		await vscode.window.showTextDocument(doc, {
+			preserveFocus: true,
+		});
+	});
+
+	context.subscriptions.push(syncCommand, configureScanPathCommand, refreshCommand, syncSingleCommand, showLogsCommand);
 
 	// 注册清理函数
 	context.subscriptions.push({
-		dispose: () => {
-			if (watcher) {
-				watcher.close();
+			dispose: () => {
+				if (watcher) {
+					watcher.close();
+				}
 			}
-		}
 	});
 }
 
