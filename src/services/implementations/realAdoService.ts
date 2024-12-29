@@ -14,7 +14,7 @@ export class RealAdoService implements IAdoService {
         this.project = config.get<string>('adoProject') || '';
     }
 
-    async getWorkItem(id: number): Promise<WorkItem> {
+    async getWorkItem(id: string): Promise<WorkItem> {
         try {
             const response = await axios.get(
                 `https://dev.azure.com/${this.organization}/${this.project}/_apis/wit/workitems/${id}?api-version=6.0`,
@@ -25,7 +25,7 @@ export class RealAdoService implements IAdoService {
                 }
             );
             return {
-                id: response.data.id,
+                id: response.data.id.toString(),
                 title: response.data.fields['System.Title'],
                 type: response.data.fields['System.WorkItemType'],
                 state: response.data.fields['System.State']
@@ -35,7 +35,7 @@ export class RealAdoService implements IAdoService {
         }
     }
 
-    async updateWorkItem(id: number, update: WorkItemUpdate): Promise<void> {
+    async updateWorkItem(id: string, update: WorkItemUpdate): Promise<void> {
         try {
             const patchDocument = [
                 {
@@ -73,7 +73,7 @@ export class RealAdoService implements IAdoService {
         }
     }
 
-    async createWorkItem(type: string, update: WorkItemUpdate): Promise<number> {
+    async createWorkItem(type: string, update: WorkItemUpdate): Promise<string> {
         try {
             const patchDocument = [
                 {
@@ -107,7 +107,7 @@ export class RealAdoService implements IAdoService {
                 }
             );
 
-            return response.data.id;
+            return response.data.id.toString();
         } catch (error) {
             throw new Error(`创建工作项失败: ${error instanceof Error ? error.message : String(error)}`);
         }

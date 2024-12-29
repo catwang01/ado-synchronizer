@@ -16,7 +16,7 @@ export class WorkitemItem extends vscode.TreeItem {
         WorkitemItem.adoConfig = { organization, project };
     }
 
-    static getWorkItemUrl(workItemId: number): string | undefined {
+    static getWorkItemUrl(workItemId: string): string | undefined {
         const { organization, project } = WorkitemItem.adoConfig;
         if (!organization || !project) {
             return undefined;
@@ -31,7 +31,7 @@ export class WorkitemItem extends vscode.TreeItem {
         public readonly filePath?: string,
         initialState?: string,
         provider?: WorkitemProvider,
-        workItemId?: number,
+        workItemId?: string,
         workItemUrl?: string,
         type?: string
     ) {
@@ -54,22 +54,7 @@ export class WorkitemItem extends vscode.TreeItem {
             this.iconPath = new vscode.ThemeIcon('circle-outline');
         }
 
-        // 如果有 ID 但没有 URL，尝试生成 URL
-        if (workItemId && !workItemUrl) {
-            workItemUrl = WorkitemItem.getWorkItemUrl(workItemId);
-        }
-
-        // 设置描述，显示工作项 ID 和类型
-        const descriptionParts = [];
-        if (workItemId) {
-            descriptionParts.push(`#${workItemId}`);
-        }
-        if (type) {
-            descriptionParts.push(`[${type}]`);
-        }
-        this.description = descriptionParts.join(' ');
-
-        // 设置工具提示，显示详细信息和可点击链接
+        // 设置工具提示，显示详细信息
         const tooltipParts = [
             displayLabel,
             workItemId ? `ID: ${workItemId}` : undefined,
@@ -82,6 +67,16 @@ export class WorkitemItem extends vscode.TreeItem {
         tooltip.isTrusted = true;
         tooltip.supportHtml = true;
         this.tooltip = tooltip;
+
+        // 设置描述，显示工作项 ID 和类型
+        const descriptionParts = [];
+        if (workItemId) {
+            descriptionParts.push(`#${workItemId}`);
+        }
+        if (type) {
+            descriptionParts.push(`[${type}]`);
+        }
+        this.description = descriptionParts.join(' ');
     }
 
     get workItemState(): string | undefined {
@@ -91,15 +86,10 @@ export class WorkitemItem extends vscode.TreeItem {
     update(metadata: { 
         title: string;
         state?: string;
-        workItemId?: number;
+        workItemId?: string;
         workItemUrl?: string;
         type?: string;
     }): void {
-        // 如果有 ID 但没有 URL，尝试生成 URL
-        if (metadata.workItemId && !metadata.workItemUrl) {
-            metadata.workItemUrl = WorkitemItem.getWorkItemUrl(metadata.workItemId);
-        }
-
         // 更新标题和状态
         const displayLabel = metadata.state ? `${metadata.title} (${metadata.state})` : metadata.title;
         this.label = displayLabel;

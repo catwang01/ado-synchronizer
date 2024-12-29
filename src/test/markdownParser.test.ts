@@ -42,7 +42,7 @@ state: Active
         await fs.writeFile(filePath, content);
         const metadata = await parser.parseMetadata(filePath);
         assert.strictEqual(metadata.title, 'Test Title');
-        assert.strictEqual(metadata.workitemId, 123);
+        assert.strictEqual(metadata.workitemId, '123');
         assert.strictEqual(metadata.type, 'Task');
         assert.strictEqual(metadata.state, 'Active');
         assert.strictEqual(metadata.workitemUrl, 'https://dev.azure.com/testorg/testproject/_workitems/edit/123');
@@ -58,7 +58,7 @@ state: Active
 ---`;
         await fs.writeFile(filePath, content);
         const metadata = await parser.parseMetadata(filePath);
-        assert.strictEqual(metadata.workitemId, 456);
+        assert.strictEqual(metadata.workitemId, '456');
         assert.strictEqual(metadata.workitemUrl, 'https://dev.azure.com/org/project/_workitems/edit/456');
     });
 

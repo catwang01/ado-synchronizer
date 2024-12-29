@@ -2,6 +2,6 @@ export interface SyncState {
     filePath: string;
     lastSyncTime: number;
     lastSyncHash: string;
-    workItemId?: number;
+    workItemId?: string;
     lastSyncStatus: 'success' | 'failed';
 } 

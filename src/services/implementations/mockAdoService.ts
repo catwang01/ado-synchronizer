@@ -1,7 +1,7 @@
 import { IAdoService, WorkItem, WorkItemUpdate } from '../interfaces/IAdoService';
 
 export class MockAdoService implements IAdoService {
-    private workItems: Map<number, WorkItem> = new Map();
+    private workItems: Map<string, WorkItem> = new Map();
     private nextId: number = 1;
 
     private simulateFailure() {
@@ -10,7 +10,7 @@ export class MockAdoService implements IAdoService {
         }
     }
 
-    async getWorkItem(id: number): Promise<WorkItem> {
+    async getWorkItem(id: string): Promise<WorkItem> {
         await new Promise(resolve => setTimeout(resolve, 1000));
         this.simulateFailure();
 
@@ -21,7 +21,7 @@ export class MockAdoService implements IAdoService {
         return item;
     }
 
-    async updateWorkItem(id: number, update: WorkItemUpdate): Promise<void> {
+    async updateWorkItem(id: string, update: WorkItemUpdate): Promise<void> {
         await new Promise(resolve => setTimeout(resolve, 1000));
         this.simulateFailure();
 
@@ -37,11 +37,11 @@ export class MockAdoService implements IAdoService {
         });
     }
 
-    async createWorkItem(type: string, update: WorkItemUpdate): Promise<number> {
+    async createWorkItem(type: string, update: WorkItemUpdate): Promise<string> {
         await new Promise(resolve => setTimeout(resolve, 1000));
         this.simulateFailure();
 
-        const id = this.nextId++;
+        const id = String(this.nextId++);
         this.workItems.set(id, {
             id,
             title: update.title,

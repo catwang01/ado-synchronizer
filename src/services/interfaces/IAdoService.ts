@@ -1,5 +1,5 @@
 export interface WorkItem {
-    id: number;
+    id: string;
     title: string;
     type: string;
     state: string;
@@ -12,7 +12,7 @@ export interface WorkItemUpdate {
 }
 
 export interface IAdoService {
-    getWorkItem(id: number): Promise<WorkItem>;
-    updateWorkItem(id: number, update: WorkItemUpdate): Promise<void>;
-    createWorkItem(type: string, update: WorkItemUpdate): Promise<number>;
+    getWorkItem(id: string): Promise<WorkItem>;
+    updateWorkItem(id: string, update: WorkItemUpdate): Promise<void>;
+    createWorkItem(type: string, update: WorkItemUpdate): Promise<string>;
 } 

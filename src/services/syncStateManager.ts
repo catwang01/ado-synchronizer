@@ -37,7 +37,7 @@ export class SyncStateManager {
         return currentHash !== state.lastSyncHash;
     }
 
-    async updateSyncState(filePath: string, success: boolean, workItemId?: number) {
+    async updateSyncState(filePath: string, success: boolean, workItemId?: string) {
         const currentHash = await this.getFileHash(filePath);
         
         this.states.set(filePath, {

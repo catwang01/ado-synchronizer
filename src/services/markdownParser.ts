@@ -5,7 +5,7 @@ import { WorkitemItem } from '../workitemProvider';
 
 export interface Metadata {
     title: string;
-    workitemId?: number;
+    workitemId?: string;
     workitemUrl?: string;
     type?: string;
     state: string;
@@ -18,13 +18,13 @@ export class MarkdownParser {
         this.md = new MarkdownIt();
     }
 
-    private parseWorkItemIdFromUrl(url: string): number | undefined {
+    private parseWorkItemIdFromUrl(url: string): string | undefined {
         try {
             // 尝试从 URL 中解析 ID
             // 例如: https://dev.azure.com/org/project/_workitems/edit/123
             const match = url.match(/_workitems\/edit\/(\d+)/);
             if (match) {
-                return parseInt(match[1], 10);
+                return match[1];
             }
             return undefined;
         } catch {
@@ -65,7 +65,7 @@ export class MarkdownParser {
                         if (trimmedKey && value) {
                             switch (trimmedKey) {
                                 case 'workitemId':
-                                    metadata.workitemId = parseInt(value);
+                                    metadata.workitemId = value;
                                     break;
                                 case 'workitemUrl':
                                     metadata.workitemUrl = value;
