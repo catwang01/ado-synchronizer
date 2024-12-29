@@ -24,6 +24,9 @@ export function activate(context: vscode.ExtensionContext) {
 	const adoService = debug ? new MockAdoService() : new AdoService();
 	const markdownParser = new MarkdownParser();
 	const syncStateManager = new SyncStateManager(context);
+
+	// 设置 ADO 配置
+	WorkitemItem.setAdoConfig(adoOrganization || '', adoProject || '');
 	
 	// 创建 TreeView Provider
 	const workitemProvider = new WorkitemProvider(adoService, markdownParser, syncStateManager);

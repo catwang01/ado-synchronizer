@@ -10,6 +10,19 @@ const providerSymbol = Symbol('provider');
 
 export class WorkitemItem extends vscode.TreeItem {
     private _state: string | undefined;
+    private static adoConfig: { organization?: string; project?: string } = {};
+
+    static setAdoConfig(organization: string, project: string) {
+        WorkitemItem.adoConfig = { organization, project };
+    }
+
+    static getWorkItemUrl(workItemId: number): string | undefined {
+        const { organization, project } = WorkitemItem.adoConfig;
+        if (!organization || !project) {
+            return undefined;
+        }
+        return `https://dev.azure.com/${organization}/${project}/_workitems/edit/${workItemId}`;
+    }
 
     constructor(
         label: string,
@@ -19,13 +32,14 @@ export class WorkitemItem extends vscode.TreeItem {
         initialState?: string,
         provider?: WorkitemProvider,
         workItemId?: number,
+        workItemUrl?: string,
         type?: string
     ) {
         // 在 label 中显示状态
         const displayLabel = initialState ? `${label} (${initialState})` : label;
         super(displayLabel, collapsibleState);
 
-        this.contextValue = filePath ? 'workitem' : undefined;
+        this.contextValue = filePath && (workItemId || workItemUrl) ? 'workitem' : undefined;
         this._state = initialState;
 
         if (provider) {
@@ -40,25 +54,83 @@ export class WorkitemItem extends vscode.TreeItem {
             this.iconPath = new vscode.ThemeIcon('circle-outline');
         }
 
-        // 设置工具提示，显示详细信息
-        const tooltipParts = [
-            displayLabel,
-            workItemId ? `ID: ${workItemId}` : '未同步',
-            type ? `类型: ${type}` : '类型: 未指定',
-            filePath ? `文件: ${filePath}` : ''
-        ].filter(Boolean);
-
-        this.tooltip = tooltipParts.join('\n');
+        // 如果有 ID 但没有 URL，尝试生成 URL
+        if (workItemId && !workItemUrl) {
+            workItemUrl = WorkitemItem.getWorkItemUrl(workItemId);
+        }
 
         // 设置描述，显示工作项 ID 和类型
-        this.description = [
-            workItemId ? `#${workItemId}` : '未同步',
-            type ? `[${type}]` : ''
-        ].filter(Boolean).join(' ');
+        const descriptionParts = [];
+        if (workItemId) {
+            descriptionParts.push(`#${workItemId}`);
+        }
+        if (type) {
+            descriptionParts.push(`[${type}]`);
+        }
+        this.description = descriptionParts.join(' ');
+
+        // 设置工具提示，显示详细信息和可点击链接
+        const tooltipParts = [
+            displayLabel,
+            workItemId ? `ID: ${workItemId}` : undefined,
+            workItemUrl ? `[在 Azure DevOps 中打开](${workItemUrl})` : undefined,
+            type ? `类型: ${type}` : undefined,
+            filePath ? `文件: ${filePath}` : undefined
+        ].filter(Boolean);
+
+        const tooltip = new vscode.MarkdownString(tooltipParts.join('\n\n'), true);
+        tooltip.isTrusted = true;
+        tooltip.supportHtml = true;
+        this.tooltip = tooltip;
     }
 
     get workItemState(): string | undefined {
         return this._state;
+    }
+
+    update(metadata: { 
+        title: string;
+        state?: string;
+        workItemId?: number;
+        workItemUrl?: string;
+        type?: string;
+    }): void {
+        // 如果有 ID 但没有 URL，尝试生成 URL
+        if (metadata.workItemId && !metadata.workItemUrl) {
+            metadata.workItemUrl = WorkitemItem.getWorkItemUrl(metadata.workItemId);
+        }
+
+        // 更新标题和状态
+        const displayLabel = metadata.state ? `${metadata.title} (${metadata.state})` : metadata.title;
+        this.label = displayLabel;
+        this._state = metadata.state;
+
+        // 设置描述，显示工作项 ID 和类型
+        const descriptionParts = [];
+        if (metadata.workItemId) {
+            descriptionParts.push(`#${metadata.workItemId}`);
+        }
+        if (metadata.type) {
+            descriptionParts.push(`[${metadata.type}]`);
+        }
+        this.description = descriptionParts.join(' ');
+
+        // 设置工具提示，显示详细信息和可点击链接
+        const tooltipParts = [
+            displayLabel,
+            metadata.workItemId ? `ID: ${metadata.workItemId}` : undefined,
+            metadata.workItemUrl ? `[在 Azure DevOps 中打开](${metadata.workItemUrl})` : undefined,
+            metadata.type ? `类型: ${metadata.type}` : undefined,
+            this.filePath ? `文件: ${this.filePath}` : undefined
+        ].filter(Boolean);
+
+        const tooltip = new vscode.MarkdownString(tooltipParts.join('\n\n'), true);
+        tooltip.isTrusted = true;
+        tooltip.supportHtml = true;
+        this.tooltip = tooltip;
+
+        // 更新 contextValue
+        this.contextValue = this.filePath && (metadata.workItemId || metadata.workItemUrl) ? 'workitem' : undefined;
     }
 }
 
@@ -144,22 +216,32 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
     async refreshItem(filePath: string): Promise<void> {
         try {
             const metadata = await this.markdownParser.parseMetadata(filePath);
-            const item = new WorkitemItem(
-                metadata.title,
-                vscode.TreeItemCollapsibleState.None,
-                {
-                    command: 'vscode.open',
-                    title: '打开文件',
-                    arguments: [vscode.Uri.file(filePath)]
-                },
-                filePath,
-                metadata.state,
-                this,
-                metadata.workitemId,
-                metadata.type
-            );
-            this.itemMap.set(filePath, item);
-            this._onDidChangeTreeData.fire(item);
+            const existingItem = this.itemMap.get(filePath);
+            
+            if (existingItem) {
+                // 如果项目已存在，更新它
+                existingItem.update(metadata);
+                this._onDidChangeTreeData.fire(existingItem);
+            } else {
+                // 如果是新项目，创建它
+                const newItem = new WorkitemItem(
+                    metadata.title,
+                    vscode.TreeItemCollapsibleState.None,
+                    {
+                        command: 'vscode.open',
+                        title: '打开文件',
+                        arguments: [vscode.Uri.file(filePath)]
+                    },
+                    filePath,
+                    metadata.state,
+                    this,
+                    metadata.workitemId,
+                    metadata.workitemUrl,
+                    metadata.type
+                );
+                this.itemMap.set(filePath, newItem);
+                this._onDidChangeTreeData.fire(newItem);
+            }
         } catch (error) {
             // 如果文件读取失败，从 Map 中移除并刷新整个视图
             this.itemMap.delete(filePath);
@@ -210,6 +292,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                         metadata.state,
                         this,
                         metadata.workitemId,
+                        metadata.workitemUrl,
                         metadata.type
                     );
                     this.itemMap.set(file, item);
