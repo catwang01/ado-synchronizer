@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
-import { IAdoService, WorkItem, WorkItemUpdate } from '../interfaces/IAdoService';
+import { IAdoService, WorkItem, WorkItemUpdate, WorkItemComment } from '../interfaces/IAdoService';
 
 export class RealAdoService implements IAdoService {
     private token: string;
@@ -134,6 +134,53 @@ export class RealAdoService implements IAdoService {
             return response.data.id.toString();
         } catch (error) {
             throw new Error(`创建工作项失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    async addComment(id: string, comment: string): Promise<string> {
+        try {
+            const response = await this.client.post(
+                `_apis/wit/workitems/${id}/comments?api-version=6.0-preview`,
+                { text: comment }
+            );
+            return response.data.id;
+        } catch (error) {
+            throw new Error(`添加评论失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    async getComments(workItemId: string): Promise<WorkItemComment[]> {
+        try {
+            const response = await this.client.get(
+                `_apis/wit/workitems/${workItemId}/comments?api-version=6.0-preview`
+            );
+            return response.data.comments.map((comment: any) => ({
+                id: comment.id,
+                text: comment.text
+            }));
+        } catch (error) {
+            throw new Error(`获取评论失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    async updateComment(workItemId: string, commentId: string, comment: string): Promise<void> {
+        try {
+            await this.client.patch(
+                `_apis/wit/workitems/${workItemId}/comments/${commentId}?api-version=6.0-preview`,
+                { text: comment }
+            );
+        } catch (error) {
+            throw new Error(`更新评论失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    async deleteComment(workItemId: string, commentId: string): Promise<void> {
+        try {
+            await this.client.delete(
+                `_apis/wit/workitems/${workItemId}/comments/${commentId}?api-version=6.0-preview`
+            );
+        } catch (error) {
+            throw new Error(`删除评论失败: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 } 

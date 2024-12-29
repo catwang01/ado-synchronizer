@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { IAdoService } from './services/adoService';
-import { MarkdownParser, Metadata } from './services/markdownParser';
+import { MarkdownParser, Metadata, CommentSection } from './services/markdownParser';
 import { log } from './utils';
 import { SyncStateManager } from './services/syncStateManager';
+import * as fs from 'fs';
 
 // 私有 symbol 用于存储 provider 引用
 const providerSymbol = Symbol('provider');
@@ -295,100 +296,119 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             title: "同步工作项",
             cancellable: false
         }, async (progress: vscode.Progress<{ message?: string; increment?: number }>) => {
-                const totalItems = this.itemMap.size;
-                let completedItems = 0;
-                let failedItems = 0;
-                let skippedItems = 0;
+            const totalItems = this.itemMap.size;
+            let completedItems = 0;
+            let failedItems = 0;
+            let skippedItems = 0;
 
-                // 设置所有项目为同步中状态
-                for (const [filePath] of this.itemMap) {
-                    this.updateItemIcon(filePath, 'syncing');
+            // 设置所有项目为同步中状态
+            for (const [filePath] of this.itemMap) {
+                this.updateItemIcon(filePath, 'syncing');
+            }
+
+            // 同步每个工作项
+            for (const [filePath] of this.itemMap) {
+                const status = await this.syncSingleWorkitem(filePath);
+                if (status === 'success') {
+                    completedItems++;
+                } else if (status === 'failed') {
+                    failedItems++;
+                } else if (status === 'skipped') {
+                    // 跳过的工作项不计入统计
+                    skippedItems++;
                 }
+                
+                progress.report({ 
+                    increment: (100 / totalItems),
+                    message: `已同步 ${completedItems}/${totalItems} 个工作项, 失败: ${failedItems} 个, 跳过: ${skippedItems} 个` 
+                });
+            }
 
-                // 同步每个工作项
-                for (const [filePath] of this.itemMap) {
-                    try {
-                        const result = await this.syncSingleWorkitem(filePath);
-                        if (result === 'skipped') {
-                            skippedItems++;
-                        } else if (result === 'failed') {
-                            failedItems++;
-                        }
-                        completedItems++;
-                        progress.report({ 
-                            increment: (100 / totalItems), 
-                            message: `已同步 ${completedItems}/${totalItems} 个工作项, 失败: ${failedItems} 个, 跳过: ${skippedItems} 个` 
-                        });
-                    } catch (error) {
-                        failedItems++;
-                        log(`同步工作项失败: ${filePath}, ${error instanceof Error ? error.message : String(error)}`);
-                    }
-                }
+            vscode.window.showInformationMessage(`已同步 ${completedItems}/${totalItems} 个工作项, 失败: ${failedItems} 个, 跳过: ${skippedItems} 个`);
 
-                if (failedItems > 0) {
-                    vscode.window.showErrorMessage('部分工作项同步失败，请查看日志了解详情');
-                } else {
-                    vscode.window.showInformationMessage('所有工作项同步完成！');
-                }
-
-                log('同步所有工作项完成');
+            log('同步所有工作项完成');
         });
     }
 
-    async syncSingleWorkitem(filePath: string): Promise<'success' | 'failed' | 'skipped'> {
-        return vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "同步工作项",
-            cancellable: false
-        }, async (progress: vscode.Progress<{ message?: string; increment?: number }>) => {
-            try {
-                // 检查是否需要同步
-                if (!await this.syncStateManager.needsSync(filePath)) {
-                    log(`跳过同步，文件未修改: ${filePath}`);
-                    // 1 秒后更新图标, 避免跳过 syncing 状态直接到 success 状态
-                    setTimeout(() => this.updateItemIcon(filePath, 'success'), 1000);
-                    return 'skipped';
-                }
+    async syncComments(workItemId: string, fileComments: CommentSection[], content: string, filePath: string): Promise<void> {
+        // 获取现有评论
+        const existingComments = await this.adoService.getComments(workItemId);
+        
+        // 创建评论ID到评论的映射
+        const existingCommentMap = new Map(existingComments.map(c => [c.id, c]));
+        const fileCommentMap = new Map(fileComments.filter(c => c.id).map(c => [c.id!, c]));
 
-                const metadata = await this.markdownParser.parseMetadata(filePath);
-                log(`开始同步工作项: ${metadata.title}`);
-                this.updateItemIcon(filePath, 'syncing');
-                
-                progress.report({ increment: 30, message: "正在读取文件..." });
-                const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
-                const markdownContent = content.toString();
-
-                progress.report({ increment: 30, message: "正在同步到 ADO..." });
-                
-                if (metadata.workitemId) {
-                    await this.adoService.updateWorkItem(metadata.workitemId, {
-                        title: metadata.title,
-                        description: markdownContent,
-                        state: metadata.state
-                    });
-                    await this.syncStateManager.updateSyncState(filePath, true, metadata.workitemId);
-                } else {
-                    const type = metadata.type || 'Task'; // 默认创建 Task 类型
-                    const newId = await this.adoService.createWorkItem(type, {
-                        title: metadata.title,
-                        description: markdownContent,
-                        state: metadata.state
-                    });
-                    await this.syncStateManager.updateSyncState(filePath, true, newId);
-                }
-                
-                progress.report({ increment: 40, message: "同步完成" });
-                log(`同步工作项完成: ${metadata.title}`);
-                this.updateItemIcon(filePath, 'success');
-                vscode.window.showInformationMessage(`同步工作项成功: ${metadata.title}`);
-                return 'success';
-            } catch (error) {
-                this.updateItemIcon(filePath, 'failed');
-                await this.syncStateManager.updateSyncState(filePath, false);
-                log(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
-                vscode.window.showErrorMessage(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
-                return 'failed';
+        // 处理需要更新和删除的评论
+        for (const [id, comment] of existingCommentMap) {
+            const fileComment = fileCommentMap.get(id);
+            if (!fileComment) {
+                // 评论在文件中被删除
+                await this.adoService.deleteComment(workItemId, id);
+            } else if (fileComment.text !== comment.text) {
+                // 评论内容有变化
+                await this.adoService.updateComment(workItemId, id, fileComment.text);
             }
-        });
+        }
+
+        // 处理新增的评论
+        for (const comment of fileComments) {
+            if (!comment.id) {
+                // 新评论
+                const commentId = await this.adoService.addComment(workItemId, comment.text);
+                // 更新文件中的评论ID
+                const index = fileComments.indexOf(comment);
+                const updatedContent = await this.markdownParser.updateCommentId(content, index, commentId);
+                await fs.promises.writeFile(filePath, updatedContent, 'utf-8');
+            }
+        }
+    }
+
+    async syncSingleWorkitem(filePath: string): Promise<'success' | 'failed' | 'skipped'> {
+        try {
+            // 设置同步中状态
+            this.updateItemIcon(filePath, 'syncing');
+
+            const content = await fs.promises.readFile(filePath, 'utf-8');
+            const { metadata, description, comments } = this.markdownParser.parseContent(content);
+
+            if (metadata.workitemId) {
+                // 更新现有工作项
+                await this.adoService.updateWorkItem(metadata.workitemId, {
+                    title: metadata.title,
+                    description: description,
+                    state: metadata.state || ''
+                });
+
+                // 同步评论
+                await this.syncComments(metadata.workitemId, comments, content, filePath);
+            } else {
+                // 创建新工作项
+                const id = await this.adoService.createWorkItem(metadata.type || 'Task', {
+                    title: metadata.title,
+                    description: description,
+                    state: metadata.state || ''
+                });
+
+                // 添加评论
+                for (const comment of comments) {
+                    await this.adoService.addComment(id, comment.text);
+                }
+
+                // 更新文件中的工作项 ID
+                const updatedContent = await this.markdownParser.updateWorkItemId(content, id);
+                await fs.promises.writeFile(filePath, updatedContent, 'utf-8');
+            }
+
+            // 更新同步状态
+            await this.syncStateManager.updateSyncState(filePath, true, metadata.workitemId);
+            
+            // 设置成功状态
+            this.updateItemIcon(filePath, 'success');
+            return 'success';
+        } catch (error) {
+            // 设置失败状态
+            this.updateItemIcon(filePath, 'failed');
+            return 'failed';
+        }
     }
 }
