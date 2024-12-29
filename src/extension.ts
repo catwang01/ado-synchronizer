@@ -8,6 +8,7 @@ import * as chokidar from 'chokidar';
 import { log } from './utils';
 import { SyncStateManager } from './services/syncStateManager';
 import { authentication } from 'vscode';
+import { SyncLogManager } from './services/implementations/syncLogManager';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -22,10 +23,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	log(`adoToken: ${adoToken}\nadoOrganization: ${adoOrganization}\nadoProject: ${adoProject}\ndebug: ${debug}`);
 
 	// 初始化服务
-	// const adoService = debug ? new MockAdoService() : new AdoService();
-	const adoService = new AdoService();
+	const adoService = debug ? new MockAdoService() : new AdoService();
 	const markdownParser = new MarkdownParser();
 	const syncStateManager = new SyncStateManager(context);
+	const syncLogManager = new SyncLogManager();
 
 	if (!await adoService.validateToken()) {
 		try {
@@ -49,7 +50,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	WorkitemItem.setAdoConfig(adoOrganization || '', adoProject || '');
 	
 	// 创建 TreeView Provider
-	const workitemProvider = new WorkitemProvider(adoService, markdownParser, syncStateManager);
+	const workitemProvider = new WorkitemProvider(
+		adoService, 
+		markdownParser, 
+		syncStateManager,
+		syncLogManager
+	);
 	vscode.window.registerTreeDataProvider('adoWorkitems', workitemProvider);
 
 	let watcher: chokidar.FSWatcher | undefined;

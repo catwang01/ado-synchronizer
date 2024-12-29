@@ -101,7 +101,14 @@
           "description": "Azure DevOps 项目名称"
         }
       }
-    }
+    },
+    "iconThemes": [
+      {
+        "id": "markdown-ado-sync-icons",
+        "label": "Markdown ADO Sync Icons",
+        "path": "./icons/icons.json"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

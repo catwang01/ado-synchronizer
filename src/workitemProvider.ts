@@ -4,6 +4,7 @@ import { MarkdownParser, Metadata, CommentSection } from './services/markdownPar
 import { log } from './utils';
 import { SyncStateManager } from './services/syncStateManager';
 import * as fs from 'fs';
+import { ISyncLogManager } from './services/interfaces/ISyncLogManager';
 
 // 私有 symbol 用于存储 provider 引用
 const providerSymbol = Symbol('provider');
@@ -33,13 +34,25 @@ export class WorkitemItem extends vscode.TreeItem {
         provider?: WorkitemProvider,
         workItemId?: string,
         workItemUrl?: string,
-        type?: string
+        type?: string,
+        public readonly isLogEntry: boolean = false
     ) {
         // 在 label 中显示状态
         const displayLabel = initialState ? `${label} (${initialState})` : label;
-        super(displayLabel, collapsibleState);
+        super(displayLabel, isLogEntry ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed);
 
-        this.contextValue = filePath && (workItemId || workItemUrl) ? 'workitem' : undefined;
+        // 只有非日志条目才有上下文菜单和命令
+        if (!isLogEntry) {
+            this.contextValue = filePath && (workItemId || workItemUrl) ? 'workitem' : undefined;
+            if (filePath) {
+                this.command = {
+                    command: 'vscode.open',
+                    title: '打开文件',
+                    arguments: [vscode.Uri.file(filePath)]
+                };
+            }
+        }
+
         this._state = initialState;
 
         if (provider) {
@@ -47,14 +60,17 @@ export class WorkitemItem extends vscode.TreeItem {
             this[providerSymbol] = provider;
         }
 
-        // 设置图标 - 只显示同步状态
-        if (filePath && provider?.syncingItems.has(filePath)) {
+        // 设置图标
+        if (isLogEntry) {
+            // 日志条目使用不同的图标
+            this.iconPath = new vscode.ThemeIcon('output');
+        } else if (filePath && provider?.syncingItems.has(filePath)) {
             this.iconPath = new vscode.ThemeIcon('sync~spin');
         } else {
             this.iconPath = new vscode.ThemeIcon('circle-outline');
         }
 
-        // 设置工具提示，显示详细信息
+        // 设置工具提示
         const tooltipParts = [
             displayLabel,
             workItemId ? `ID: ${workItemId}` : undefined,
@@ -68,15 +84,17 @@ export class WorkitemItem extends vscode.TreeItem {
         tooltip.supportHtml = true;
         this.tooltip = tooltip;
 
-        // 设置描述，显示工作项 ID 和类型
-        const descriptionParts = [];
-        if (workItemId) {
-            descriptionParts.push(`#${workItemId}`);
+        // 设置描述
+        if (!isLogEntry) {
+            const descriptionParts = [];
+            if (workItemId) {
+                descriptionParts.push(`#${workItemId}`);
+            }
+            if (type) {
+                descriptionParts.push(`[${type}]`);
+            }
+            this.description = descriptionParts.join(' ');
         }
-        if (type) {
-            descriptionParts.push(`[${type}]`);
-        }
-        this.description = descriptionParts.join(' ');
     }
 
     get workItemState(): string | undefined {
@@ -130,8 +148,9 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
     constructor(
         private adoService: IAdoService,
         private markdownParser: MarkdownParser,
-        private syncStateManager: SyncStateManager
-    ) { }
+        private syncStateManager: SyncStateManager,
+        private syncLogManager: ISyncLogManager
+    ) {}
 
     private updateItemIcon(filePath: string, status: 'syncing' | 'success' | 'failed' | 'default') {
         const item = this.itemMap.get(filePath);
@@ -236,7 +255,24 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         return element;
     }
 
-    async getChildren(element?: WorkitemItem | undefined): Promise<WorkitemItem[]> {
+    async getChildren(element?: WorkitemItem): Promise<WorkitemItem[]> {
+        if (element?.filePath && !element.isLogEntry) {
+            // 返回同步日志项
+            const logs = this.syncLogManager.getLogs(element.filePath);
+            return logs.map(log => new WorkitemItem(
+                this.syncLogManager.formatLogEntry(log),
+                vscode.TreeItemCollapsibleState.None,
+                undefined,
+                element.filePath,
+                undefined,
+                this,
+                undefined,
+                undefined,
+                undefined,
+                true
+            ));
+        }
+
         if (element) {
             return [];
         }
@@ -265,7 +301,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                     const metadata = await this.markdownParser.parseMetadata(file);
                     const item = new WorkitemItem(
                         metadata.title,
-                        vscode.TreeItemCollapsibleState.None,
+                        vscode.TreeItemCollapsibleState.Collapsed,
                         {
                             command: 'vscode.open',
                             title: '打开文件',
@@ -365,8 +401,12 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
 
     async syncSingleWorkitem(filePath: string): Promise<'success' | 'failed' | 'skipped'> {
         try {
-            // 设置同步中状态
             this.updateItemIcon(filePath, 'syncing');
+            this.syncLogManager.addLog(filePath, {
+                timestamp: Date.now(),
+                status: 'success',
+                message: '开始同步...'
+            });
 
             const content = await fs.promises.readFile(filePath, 'utf-8');
             const { metadata, description, comments } = this.markdownParser.parseContent(content);
@@ -402,13 +442,33 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             // 更新同步状态
             await this.syncStateManager.updateSyncState(filePath, true, metadata.workitemId);
             
-            // 设置成功状态
+            this.syncLogManager.addLog(filePath, {
+                timestamp: Date.now(),
+                status: 'success',
+                message: '同步成功',
+                details: `已更新工作项 ${metadata.workitemId || 'new'}`
+            });
+
             this.updateItemIcon(filePath, 'success');
             return 'success';
         } catch (error) {
-            // 设置失败状态
+            this.syncLogManager.addLog(filePath, {
+                timestamp: Date.now(),
+                status: 'failed',
+                message: '同步失败',
+                details: error instanceof Error ? error.message : String(error)
+            });
+
             this.updateItemIcon(filePath, 'failed');
             return 'failed';
+        }
+    }
+
+    // 当需要刷新日志显示时调用
+    refreshLogs(filePath: string): void {
+        const item = this.itemMap.get(filePath);
+        if (item) {
+            this._onDidChangeTreeData.fire(item);
         }
     }
 }
