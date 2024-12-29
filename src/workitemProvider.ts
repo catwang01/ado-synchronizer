@@ -17,7 +17,9 @@ export class WorkitemItem extends vscode.TreeItem {
         public readonly command?: vscode.Command,
         public readonly filePath?: string,
         initialState?: string,
-        provider?: WorkitemProvider
+        provider?: WorkitemProvider,
+        workItemId?: number,
+        type?: string
     ) {
         // 在 label 中显示状态
         const displayLabel = initialState ? `${label} (${initialState})` : label;
@@ -38,8 +40,21 @@ export class WorkitemItem extends vscode.TreeItem {
             this.iconPath = new vscode.ThemeIcon('circle-outline');
         }
 
-        // 设置工具提示
-        this.tooltip = displayLabel;
+        // 设置工具提示，显示详细信息
+        const tooltipParts = [
+            displayLabel,
+            workItemId ? `ID: ${workItemId}` : '未同步',
+            type ? `类型: ${type}` : '类型: 未指定',
+            filePath ? `文件: ${filePath}` : ''
+        ].filter(Boolean);
+
+        this.tooltip = tooltipParts.join('\n');
+
+        // 设置描述，显示工作项 ID 和类型
+        this.description = [
+            workItemId ? `#${workItemId}` : '未同步',
+            type ? `[${type}]` : ''
+        ].filter(Boolean).join(' ');
     }
 
     get workItemState(): string | undefined {
@@ -139,7 +154,9 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 },
                 filePath,
                 metadata.state,
-                this
+                this,
+                metadata.workitemId,
+                metadata.type
             );
             this.itemMap.set(filePath, item);
             this._onDidChangeTreeData.fire(item);
@@ -172,10 +189,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 {
                     command: 'markdown-ado-sync.configureScanPath',
                     title: '配置扫描路径'
-                },
-                undefined,
-                undefined,
-                this
+                }
             )];
         }
 
@@ -194,7 +208,9 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                         },
                         file,
                         metadata.state,
-                        this
+                        this,
+                        metadata.workitemId,
+                        metadata.type
                     );
                     this.itemMap.set(file, item);
                     return item;
