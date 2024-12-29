@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { WorkitemProvider, WorkitemItem } from './workitemProvider';
-import { AdoService } from './services/adoService';
+import { AdoService, MockAdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
 import * as chokidar from 'chokidar';
 import { log } from './utils';
@@ -20,7 +20,8 @@ export function activate(context: vscode.ExtensionContext) {
 	log(`adoToken: ${adoToken}\nadoOrganization: ${adoOrganization}\nadoProject: ${adoProject}\ndebug: ${debug}`);
 
 	// 初始化服务
-	const adoService = new AdoService();
+	const adoService = debug ? new MockAdoService() : new AdoService();
+
 	const markdownParser = new MarkdownParser();
 	
 	// 创建 TreeView Provider

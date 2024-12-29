@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { AdoService } from './services/adoService';
+import { IAdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
 import { log } from './utils';
 import { StateIcons, WorkItemState } from './constants/icons';
@@ -56,7 +56,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
     private itemMap: Map<string, WorkitemItem> = new Map();
 
     constructor(
-        private adoService: AdoService,
+        private adoService: IAdoService,
         private markdownParser: MarkdownParser
     ) {}
 
@@ -204,9 +204,44 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                     this.updateItemIcon(filePath, 'syncing');
                 }
 
-                // 模拟同步过程
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                progress.report({ increment: 100, message: "同步完成" });
+                // 同步每个工作项
+                for (const [filePath, item] of this.itemMap) {
+                    try {
+                        const metadata = await this.markdownParser.parseMetadata(filePath);
+                        const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+                        const markdownContent = content.toString();
+                        
+                        // 如果有工作项 ID，则更新；否则创建新的工作项
+                        if (metadata.workitemId) {
+                            await this.adoService.updateWorkItem(metadata.workitemId, {
+                                title: metadata.title,
+                                description: markdownContent,
+                                state: metadata.state
+                            });
+                        } else {
+                            const type = metadata.type || 'Task'; // 默认创建 Task 类型
+                            const newId = await this.adoService.createWorkItem(type, {
+                                title: metadata.title,
+                                description: markdownContent,
+                                state: metadata.state
+                            });
+                            
+                            // 更新 Markdown 文件，添加工作项 ID
+                            const updatedContent = `---\nworkitemId: ${newId}\n${markdownContent.substring(markdownContent.indexOf('---') + 3)}`;
+                            await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), Buffer.from(updatedContent));
+                        }
+
+                        completedItems++;
+                        progress.report({ 
+                            increment: (100 / totalItems), 
+                            message: `已同步 ${completedItems}/${totalItems} 个工作项` 
+                        });
+                    } catch (error) {
+                        log(`同步工作项失败: ${filePath}, ${error instanceof Error ? error.message : String(error)}`);
+                        this.updateItemIcon(filePath, 'failed');
+                    }
+                }
+
                 log('同步所有工作项完成');
                 
                 // 同步成功后，显示成功图标
@@ -235,12 +270,32 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 log(`开始同步工作项: ${metadata.title}`);
                 this.updateItemIcon(filePath, 'syncing');
                 
-                progress.report({ increment: 50, message: "正在同步..." });
+                progress.report({ increment: 30, message: "正在读取文件..." });
+                const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+                const markdownContent = content.toString();
+
+                progress.report({ increment: 30, message: "正在同步到 ADO..." });
                 
-                // 模拟同步过程
-                await new Promise(resolve => setTimeout(resolve, 5000));
+                if (metadata.workitemId) {
+                    await this.adoService.updateWorkItem(metadata.workitemId, {
+                        title: metadata.title,
+                        description: markdownContent,
+                        state: metadata.state
+                    });
+                } else {
+                    const type = metadata.type || 'Task'; // 默认创建 Task 类型
+                    const newId = await this.adoService.createWorkItem(type, {
+                        title: metadata.title,
+                        description: markdownContent,
+                        state: metadata.state
+                    });
+                    
+                    // 更新 Markdown 文件，添加工作项 ID
+                    const updatedContent = `---\nworkitemId: ${newId}\n${markdownContent.substring(markdownContent.indexOf('---') + 3)}`;
+                    await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), Buffer.from(updatedContent));
+                }
                 
-                progress.report({ increment: 50, message: "同步完成" });
+                progress.report({ increment: 40, message: "同步完成" });
                 log(`同步工作项完成: ${metadata.title}`);
                 this.updateItemIcon(filePath, 'success');
                 vscode.window.showInformationMessage(`同步工作项成功: ${metadata.title}`);
