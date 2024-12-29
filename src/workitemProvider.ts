@@ -10,12 +10,13 @@ import { ISyncLogManager } from './services/interfaces/ISyncLogManager';
 const providerSymbol = Symbol('provider');
 
 export type WorkItemUpdate = Partial<{
-    title: string;
-    state: string;
-    workitemId: string;
-    workitemUrl: string;
-    type: string;
-    description: string;
+    title?: string;
+    state?: string;
+    workitemId?: string;
+    workitemUrl?: string;
+    type?: string;
+    description?: string;
+    iconPath?: vscode.ThemeIcon;
 }>;
 
 export class WorkitemItem extends vscode.TreeItem {
@@ -161,6 +162,9 @@ export class WorkitemItem extends vscode.TreeItem {
         if (updates.workitemId || updates.workitemUrl) {
             this.contextValue = this.filePath && (updates.workitemId || updates.workitemUrl) ? 'workitem' : undefined;
         }
+        if (updates.iconPath) {
+            this.iconPath = updates.iconPath;
+        }
         this.collapsibleState = this.getCollapsibleState();
     }
 }
@@ -190,21 +194,24 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 this.syncingItems.delete(filePath);
             }
 
+            var iconPath: vscode.ThemeIcon;
             // 更新图标
             switch (status) {
                 case 'syncing':
-                    item.iconPath = new vscode.ThemeIcon('sync~spin');
+                    iconPath = new vscode.ThemeIcon('sync~spin');
                     break;
                 case 'success':
-                    item.iconPath = new vscode.ThemeIcon('check');
+                    iconPath = new vscode.ThemeIcon('check');
                     break;
                 case 'failed':
-                    item.iconPath = new vscode.ThemeIcon('error');
+                    iconPath = new vscode.ThemeIcon('error');
                     break;
                 default:
-                    item.iconPath = new vscode.ThemeIcon('circle-outline');
+                    iconPath = new vscode.ThemeIcon('circle-outline');
             }
-
+            item.update({
+                iconPath: iconPath
+            });
             // 强制刷新这个项目
             this._onDidChangeTreeData.fire(item);
         }
