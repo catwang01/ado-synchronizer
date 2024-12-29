@@ -1,8 +1,46 @@
 import * as vscode from 'vscode';
 import { AdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
+import { log } from './utils';
+import { StateIcons, WorkItemState } from './constants/icons';
+
+// 私有 symbol 用于存储 provider 引用
+const providerSymbol = Symbol('provider');
+
+export class WorkitemItem extends vscode.TreeItem {
+    constructor(
+        public readonly label: string,
+        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+        public readonly command?: vscode.Command,
+        public readonly filePath?: string,
+        public readonly state?: string,
+        provider?: WorkitemProvider
+    ) {
+        super(label, collapsibleState);
+        this.contextValue = filePath ? 'workitem' : undefined;
+        if (provider) {
+            // @ts-ignore
+            this[providerSymbol] = provider;
+        }
+
+        // 设置图标
+        if (filePath && provider?.syncingItems.has(filePath)) {
+            this.iconPath = StateIcons.Syncing;
+        } else if (state) {
+            this.iconPath = new vscode.ThemeIcon(
+                (StateIcons[state as WorkItemState] || StateIcons.default).replace('$(', '').replace(')', '')
+            );
+        }
+
+        // 设置工具提示，显示状态信息
+        this.tooltip = state ? `${label} (${state})` : label;
+    }
+}
 
 export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
+    // 使内部类的 syncingItems 可以被 WorkitemItem 访问
+    readonly syncingItems: Set<string> = new Set();
+
     private _onDidChangeTreeData: vscode.EventEmitter<WorkitemItem | undefined> = new vscode.EventEmitter<WorkitemItem | undefined>();
     readonly onDidChangeTreeData: vscode.Event<WorkitemItem | undefined> = this._onDidChangeTreeData.event;
 
@@ -12,6 +50,18 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         private adoService: AdoService,
         private markdownParser: MarkdownParser
     ) {}
+
+    private updateItemIcon(filePath: string, isSyncing: boolean) {
+        const item = this.itemMap.get(filePath);
+        if (item) {
+            if (isSyncing) {
+                this.syncingItems.add(filePath);
+            } else {
+                this.syncingItems.delete(filePath);
+            }
+            this._onDidChangeTreeData.fire(item);
+        }
+    }
 
     refresh(filePath?: string): void {
         if (filePath) {
@@ -36,7 +86,8 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                     arguments: [vscode.Uri.file(filePath)]
                 },
                 filePath,
-                metadata.state
+                metadata.state,
+                this
             );
             this.itemMap.set(filePath, item);
             this._onDidChangeTreeData.fire(item);
@@ -69,7 +120,10 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 {
                     command: 'markdown-ado-sync.configureScanPath',
                     title: '配置扫描路径'
-                }
+                },
+                undefined,
+                undefined,
+                this
             )];
         }
 
@@ -87,9 +141,9 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                             arguments: [vscode.Uri.file(file)]
                         },
                         file,
-                        metadata.state
+                        metadata.state,
+                        this
                     );
-                    this.itemMap.set(file, item);
                     return item;
                 })
             );
@@ -101,84 +155,47 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
     }
 
     async syncWorkitems(): Promise<void> {
-        // 实现同步逻辑
+        log('开始同步所有工作项...');
+        try {
+            // 将所有项目标记为同步中
+            for (const [filePath] of this.itemMap) {
+                this.updateItemIcon(filePath, true);
+            }
+
+            // 模拟同步过程
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            log('同步所有工作项完成');
+            
+            // 同步成功后，恢复所有项目的图标
+            for (const [filePath] of this.itemMap) {
+                this.updateItemIcon(filePath, false);
+            }
+        } catch (error) {
+            // 同步失败后，恢复所有项目的图标
+            for (const [filePath] of this.itemMap) {
+                this.updateItemIcon(filePath, false);
+            }
+            log(`同步所有工作项失败: ${error instanceof Error ? error.message : String(error)}`);
+            throw error;
+        }
     }
 
     async syncSingleWorkitem(filePath: string): Promise<void> {
         try {
             const metadata = await this.markdownParser.parseMetadata(filePath);
-            // TODO: 实现单个工作项的同步逻辑
+            log(`开始同步工作项: ${metadata.title}`);
+            this.updateItemIcon(filePath, true);
+            
+            // 模拟同步过程
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            
+            log(`同步工作项完成: ${metadata.title}`);
+            this.updateItemIcon(filePath, false);
             vscode.window.showInformationMessage(`同步工作项成功: ${metadata.title}`);
         } catch (error) {
+            this.updateItemIcon(filePath, false);
+            log(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
             vscode.window.showErrorMessage(`同步工作项失败: ${error instanceof Error ? error.message : String(error)}`);
         }
-    }
-}
-
-// ADO 工作项状态及其对应的图标
-const StateIcons = {
-    // 特殊状态
-    'NotSpecified': '$(question)',  // 使用问号图标表示未指定状态
-
-    // Bug 状态
-    'Active': '$(bug)',
-    'Resolved': '$(check)',
-    'Closed': '$(pass)',
-
-    // Task 状态
-    'To Do': '$(circle-outline)',
-    'Doing': '$(sync)',
-    'Done': '$(check)',
-
-    // User Story 状态
-    'New': '$(circle-outline)',
-    'In Progress': '$(sync)',
-    'Completed': '$(check)',
-
-    // Feature 状态
-    'Proposed': '$(circle-outline)',
-    'In Review': '$(eye)',
-    'Under Development': '$(sync)',
-    'Complete': '$(check)',
-    'Removed': '$(x)',
-
-    // Epic 状态
-    'Backlog': '$(circle-outline)',
-    'Committed': '$(sync)',
-    'Started': '$(play)',
-    'Finished': '$(check)',
-    'Cut': '$(x)',
-
-    // Issue 状态
-    'Open': '$(warning)',
-    'Investigation': '$(search)',
-    'Fixed': '$(check)',
-
-    // 默认状态
-    'default': '$(circle-outline)'
-} as const;
-
-type WorkItemState = keyof typeof StateIcons;
-
-export class WorkitemItem extends vscode.TreeItem {
-    constructor(
-        public readonly label: string,
-        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly command?: vscode.Command,
-        public readonly filePath?: string,
-        public readonly state?: string
-    ) {
-        super(label, collapsibleState);
-        this.contextValue = filePath ? 'workitem' : undefined;
-
-        // 设置图标
-        if (state) {
-            this.iconPath = new vscode.ThemeIcon(
-                (StateIcons[state as WorkItemState] || StateIcons.default).replace('$(', '').replace(')', '')
-            );
-        }
-
-        // 设置工具提示，显示状态信息
-        this.tooltip = state ? `${label} (${state})` : label;
     }
 } 
