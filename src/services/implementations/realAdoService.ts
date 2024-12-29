@@ -6,12 +6,38 @@ export class RealAdoService implements IAdoService {
     private token: string;
     private organization: string;
     private project: string;
+    private client: any;
 
     constructor() {
         const config = vscode.workspace.getConfiguration('markdown-ado-sync');
         this.token = config.get<string>('adoToken') || '';
         this.organization = config.get<string>('adoOrganization') || '';
         this.project = config.get<string>('adoProject') || '';
+        this.updateClient();
+    }
+
+    private updateClient() {
+        this.client = axios.create({
+            baseURL: `https://dev.azure.com/${this.organization}/${this.project}/`,
+            headers: {
+                'Authorization': `Basic ${Buffer.from(`:${this.token}`).toString('base64')}`,
+                'Content-Type': 'application/json'
+            }
+        });
+    }
+
+    updateToken(token: string): void {
+        this.token = token;
+        this.updateClient();
+    }
+
+    async validateToken(): Promise<boolean> {
+        try {
+            const response = await this.client.get('_apis/projects');
+            return response.status === 200;
+        } catch (error) {
+            return false;
+        }
     }
 
     async getWorkItem(id: string): Promise<WorkItem> {
@@ -58,12 +84,11 @@ export class RealAdoService implements IAdoService {
                 });
             }
 
-            await axios.patch(
-                `https://dev.azure.com/${this.organization}/${this.project}/_apis/wit/workitems/${id}?api-version=6.0`,
+            await this.client.patch(
+                `_apis/wit/workitems/${id}?api-version=6.0`,
                 patchDocument,
                 {
                     headers: {
-                        'Authorization': `Basic ${Buffer.from(`:${this.token}`).toString('base64')}`,
                         'Content-Type': 'application/json-patch+json'
                     }
                 }
@@ -96,12 +121,11 @@ export class RealAdoService implements IAdoService {
                 });
             }
 
-            const response = await axios.post(
-                `https://dev.azure.com/${this.organization}/${this.project}/_apis/wit/workitems/$${type}?api-version=6.0`,
+            const response = await this.client.post(
+                `_apis/wit/workitems/$${type}?api-version=6.0`,
                 patchDocument,
                 {
                     headers: {
-                        'Authorization': `Basic ${Buffer.from(`:${this.token}`).toString('base64')}`,
                         'Content-Type': 'application/json-patch+json'
                     }
                 }

@@ -51,4 +51,12 @@ export class MockAdoService implements IAdoService {
 
         return id;
     }
+
+    async validateToken(): Promise<boolean> {
+        return true; // Mock 环境总是返回 token 有效
+    }
+
+    updateToken(token: string): void {
+        // Mock 环境不需要实际实现
+    }
 } 

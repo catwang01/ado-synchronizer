@@ -7,10 +7,11 @@ import { MarkdownParser } from './services/markdownParser';
 import * as chokidar from 'chokidar';
 import { log } from './utils';
 import { SyncStateManager } from './services/syncStateManager';
+import { authentication } from 'vscode';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
 	// 检查配置
 	const config = vscode.workspace.getConfiguration('markdown-ado-sync');
 	const scanPath = config.get<string>('scanPath');
@@ -21,9 +22,28 @@ export function activate(context: vscode.ExtensionContext) {
 	log(`adoToken: ${adoToken}\nadoOrganization: ${adoOrganization}\nadoProject: ${adoProject}\ndebug: ${debug}`);
 
 	// 初始化服务
-	const adoService = debug ? new MockAdoService() : new AdoService();
+	// const adoService = debug ? new MockAdoService() : new AdoService();
+	const adoService = new AdoService();
 	const markdownParser = new MarkdownParser();
 	const syncStateManager = new SyncStateManager(context);
+
+	if (!await adoService.validateToken()) {
+		try {
+			const session = await authentication.getSession('microsoft', ['499b84ac-1321-427f-aa17-267ca6975798/user_impersonation'], {
+				createIfNone: true
+			});
+			
+			if (!session) {
+				vscode.window.showErrorMessage('需要 Azure DevOps 授权才能继续使用。请重新运行命令进行授权。');
+				return;
+			}
+			
+			adoService.updateToken(session.accessToken);
+		} catch (error) {
+			vscode.window.showErrorMessage(`授权失败: ${error instanceof Error ? error.message : String(error)}`);
+			return;
+		}
+	}
 
 	// 设置 ADO 配置
 	WorkitemItem.setAdoConfig(adoOrganization || '', adoProject || '');
