@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import { IAdoService } from './services/adoService';
-import { MarkdownParser } from './services/markdownParser';
+import { MarkdownParser, Metadata } from './services/markdownParser';
 import { log } from './utils';
-import { StateIcons, WorkItemState } from './constants/icons';
 import { SyncStateManager } from './services/syncStateManager';
 
 // 私有 symbol 用于存储 provider 引用
@@ -83,13 +82,7 @@ export class WorkitemItem extends vscode.TreeItem {
         return this._state;
     }
 
-    update(metadata: { 
-        title: string;
-        state?: string;
-        workItemId?: string;
-        workItemUrl?: string;
-        type?: string;
-    }): void {
+    update(metadata: Metadata): void {
         // 更新标题和状态
         const displayLabel = metadata.state ? `${metadata.title} (${metadata.state})` : metadata.title;
         this.label = displayLabel;
@@ -97,8 +90,8 @@ export class WorkitemItem extends vscode.TreeItem {
 
         // 设置描述，显示工作项 ID 和类型
         const descriptionParts = [];
-        if (metadata.workItemId) {
-            descriptionParts.push(`#${metadata.workItemId}`);
+        if (metadata.workitemId) {
+            descriptionParts.push(`#${metadata.workitemId}`);
         }
         if (metadata.type) {
             descriptionParts.push(`[${metadata.type}]`);
@@ -108,8 +101,8 @@ export class WorkitemItem extends vscode.TreeItem {
         // 设置工具提示，显示详细信息和可点击链接
         const tooltipParts = [
             displayLabel,
-            metadata.workItemId ? `ID: ${metadata.workItemId}` : undefined,
-            metadata.workItemUrl ? `[在 Azure DevOps 中打开](${metadata.workItemUrl})` : undefined,
+            metadata.workitemId ? `ID: ${metadata.workitemId}` : undefined,
+            metadata.workitemUrl ? `[在 Azure DevOps 中打开](${metadata.workitemUrl})` : undefined,
             metadata.type ? `类型: ${metadata.type}` : undefined,
             this.filePath ? `文件: ${this.filePath}` : undefined
         ].filter(Boolean);
@@ -120,7 +113,7 @@ export class WorkitemItem extends vscode.TreeItem {
         this.tooltip = tooltip;
 
         // 更新 contextValue
-        this.contextValue = this.filePath && (metadata.workItemId || metadata.workItemUrl) ? 'workitem' : undefined;
+        this.contextValue = this.filePath && (metadata.workitemId || metadata.workitemUrl) ? 'workitem' : undefined;
     }
 }
 
@@ -191,8 +184,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 const item = this.itemMap.get(filePath);
                 if (item) {
                     const metadata = await this.markdownParser.parseMetadata(filePath);
-                    const displayLabel = metadata.title + ' (已修改)';
-                    item.label = displayLabel;
+                    item.update(metadata);
                     this._onDidChangeTreeData.fire(item);
                 }
             }
