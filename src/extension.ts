@@ -161,13 +161,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 
 	// 注册显示日志的命令
-	let showLogsCommand = vscode.commands.registerCommand('markdown-ado-sync.showLogs', async (item: WorkitemItem) => {
-		if (!item.filePath || !item.logGroupId) {
+	let showLogsCommand = vscode.commands.registerCommand('markdown-ado-sync.showLogs', async (filePath: string, groupId: string) => {
+		if (!filePath || !groupId) {
 			return;
 		}
 
-		// 使用公共方法获取日志组内容
-		const logs = workitemProvider.getLogGroup(item.filePath, item.logGroupId);
+		const logs = workitemProvider.getLogGroup(filePath, groupId);
 		
 		// 创建日志内容
 		const content = logs.map(log => {
@@ -186,7 +185,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			language: 'markdown'
 		});
 		await vscode.window.showTextDocument(doc, {
-			preserveFocus: true,
+			preserveFocus: true
 		});
 	});
 

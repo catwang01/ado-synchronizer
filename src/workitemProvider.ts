@@ -28,20 +28,18 @@ export class WorkitemItem extends vscode.TreeItem {
     private _workitemUrl?: string;
     private _type?: string;
     private _filePath?: string;
-    private _isLogEntry: boolean;
-    private _logEntryId?: string;
     private _logGroupId?: string;
     private _isLogGroup: boolean = false;
+    private _groupStatus?: 'success' | 'failed' | 'skipped';
 
     get workitemId(): string | undefined { return this._workitemId; }
     get workitemUrl(): string | undefined { return this._workitemUrl; }
     get type(): string | undefined { return this._type; }
     get filePath(): string | undefined { return this._filePath; }
-    get isLogEntry(): boolean { return this._isLogEntry; }
     get workItemState(): string | undefined { return this._state; }
-    get logEntryId(): string | undefined { return this._logEntryId; }
     get logGroupId(): string | undefined { return this._logGroupId; }
     get isLogGroup(): boolean { return this._isLogGroup; }
+    get groupStatus(): 'success' | 'failed' | 'skipped' | undefined { return this._groupStatus; }
 
     static setAdoConfig(organization: string, project: string) {
         WorkitemItem.adoConfig = { organization, project };
@@ -55,39 +53,18 @@ export class WorkitemItem extends vscode.TreeItem {
         return `https://dev.azure.com/${organization}/${project}/_workitems/edit/${workItemId}`;
     }
 
-    private computeTooltip(): vscode.MarkdownString {
-        const tooltipParts = [
-            this.label as string,
-            this.workitemId ? `ID: ${this.workitemId}` : undefined,
-            this.workitemUrl ? `[在 Azure DevOps 中打开](${this.workitemUrl})` : undefined,
-            this.type ? `类型: ${this.type}` : undefined,
-            this.filePath ? `文件: ${this.filePath}` : undefined
-        ].filter(Boolean);
-
-        const tooltip = new vscode.MarkdownString(tooltipParts.join('\n\n'), true);
-        tooltip.isTrusted = true;
-        tooltip.supportHtml = true;
-        return tooltip;
-    }
-
-    private computeDescription(): string {
-        if (this.isLogEntry) {
-            return '';
-        }
-
-        const descriptionParts = [];
-        if (this.workitemId) {
-            descriptionParts.push(`#${this.workitemId}`);
-        }
-        if (this.type) {
-            descriptionParts.push(`[${this.type}]`);
-        }
-        return descriptionParts.join(' ');
-    }
-
     private computeInitialIcon(provider: WorkitemProvider): vscode.ThemeIcon {
-        if (this.isLogEntry) {
-            return new vscode.ThemeIcon('output');
+        if (this.isLogGroup) {
+            switch (this.groupStatus) {
+                case 'success':
+                    return new vscode.ThemeIcon('check');
+                case 'failed':
+                    return new vscode.ThemeIcon('error');
+                case 'skipped':
+                    return new vscode.ThemeIcon('warning');
+                default:
+                    return new vscode.ThemeIcon('history');
+            }
         } else if (this.filePath && provider?.syncingItems.has(this.filePath)) {
             return new vscode.ThemeIcon('sync~spin');
         } else {
@@ -95,20 +72,35 @@ export class WorkitemItem extends vscode.TreeItem {
         }
     }
 
+    private computeCommand(): vscode.Command | undefined {
+        if (this.isLogGroup) {
+            return {
+                command: 'markdown-ado-sync.showLogs',
+                title: '显示日志',
+                arguments: [this.filePath, this.logGroupId]
+            };
+        } else if (this.filePath) {
+            return {
+                command: 'vscode.open',
+                title: '打开文件',
+                arguments: [vscode.Uri.file(this.filePath)]
+            };
+        }
+        return undefined;
+    }
+
     constructor(
         label: string,
         syncLogManager: ISyncLogManager,
         provider: WorkitemProvider,
-        public readonly command?: vscode.Command,
         filePath?: string,
         initialState?: string,
         workitemId?: string,
         workitemUrl?: string,
         type?: string,
-        isLogEntry: boolean = false,
-        logEntryId?: string,
+        isLogGroup: boolean = false,
         logGroupId?: string,
-        isLogGroup: boolean = false
+        groupStatus?: 'success' | 'failed' | 'skipped'
     ) {
         const displayLabel = initialState ? `${label} (${initialState})` : label;
         super(displayLabel);
@@ -118,46 +110,32 @@ export class WorkitemItem extends vscode.TreeItem {
         this._workitemUrl = workitemUrl;
         this._type = type;
         this._filePath = filePath;
-        this._isLogEntry = isLogEntry;
         this._state = initialState;
-        this._logEntryId = logEntryId;
         this._logGroupId = logGroupId;
         this._isLogGroup = isLogGroup;
+        this._groupStatus = groupStatus;
 
         // @ts-ignore
         this[providerSymbol] = provider;
 
-        this.collapsibleState = this.getCollapsibleState();
-
-        // 只有非日志条目才有上下文菜单和命令
-        if (this.isLogGroup) {
-            // 日志组点击时显示日志内容
-            this.command = {
-                command: 'markdown-ado-sync.showLogs',
-                title: '显示日志',
-                arguments: [this]  // 传递当前项
-            };
-            this.collapsibleState = vscode.TreeItemCollapsibleState.None;  // 日志组不可折叠
-        } else if (!this.isLogEntry) {
-            this.contextValue = this.filePath && (this.workitemId || this.workitemUrl) ? 'workitem' : undefined;
-            if (this.filePath) {
-                this.command = {
-                    command: 'vscode.open',
-                    title: '打开文件',
-                    arguments: [vscode.Uri.file(this.filePath)]
-                };
-            }
-        }
-
+        // 设置图标和工具提示
         this.iconPath = this.computeInitialIcon(provider);
         this.tooltip = this.computeTooltip();
         this.description = this.computeDescription();
+
+        // 设置命令和上下文
+        this.command = this.computeCommand();
+        if (!this.isLogGroup) {
+            this.contextValue = this.filePath && (this.workitemId || this.workitemUrl) ? 'workitem' : undefined;
+        }
+        this.collapsibleState = this.getCollapsibleState();
     }
 
-    getCollapsibleState(): vscode.TreeItemCollapsibleState {
-        if (this.isLogEntry) {
+    private getCollapsibleState(): vscode.TreeItemCollapsibleState {
+        if (this.isLogGroup) {
             return vscode.TreeItemCollapsibleState.None;
         }
+        
         return this.filePath && this.syncLogManager?.getLogs(this.filePath).length > 0
             ? vscode.TreeItemCollapsibleState.Collapsed
             : vscode.TreeItemCollapsibleState.None;
@@ -186,6 +164,32 @@ export class WorkitemItem extends vscode.TreeItem {
             this.iconPath = updates.iconPath;
         }
         this.collapsibleState = this.getCollapsibleState();
+    }
+
+    private computeTooltip(): vscode.MarkdownString {
+        const tooltipParts = [
+            this.label as string,
+            this.workitemId ? `ID: ${this.workitemId}` : undefined,
+            this.workitemUrl ? `[在 Azure DevOps 中打开](${this.workitemUrl})` : undefined,
+            this.type ? `类型: ${this.type}` : undefined,
+            this.filePath ? `文件: ${this.filePath}` : undefined
+        ].filter(Boolean);
+
+        const tooltip = new vscode.MarkdownString(tooltipParts.join('\n\n'), true);
+        tooltip.isTrusted = true;
+        tooltip.supportHtml = true;
+        return tooltip;
+    }
+
+    private computeDescription(): string {
+        const descriptionParts = [];
+        if (this.workitemId) {
+            descriptionParts.push(`#${this.workitemId}`);
+        }
+        if (this.type) {
+            descriptionParts.push(`[${this.type}]`);
+        }
+        return descriptionParts.join(' ');
     }
 }
 
@@ -291,11 +295,6 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                     metadata.title,
                     this.syncLogManager,
                     this,
-                    {
-                        command: 'vscode.open',
-                        title: '打开文件',
-                        arguments: [vscode.Uri.file(filePath)]
-                    },
                     filePath,
                     metadata.state,
                     metadata.workitemId,
@@ -318,7 +317,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
     }
 
     async getChildren(element?: WorkitemItem): Promise<WorkitemItem[]> {
-        if (element?.filePath && !element.isLogEntry && !element.isLogGroup) {
+        if (element?.filePath && !element.isLogGroup) {
             // 只处理工作项层级：显示日志组
             const logs = this.syncLogManager.getLogs(element.filePath);
             const groupedLogs = new Map<string, SyncLogEntry[]>();
@@ -332,24 +331,26 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 }
             });
 
-            // 创建日志组项
+            // 创建日志组项，并计算组的状态
             return Array.from(groupedLogs.entries()).map(([groupId, groupLogs]) => {
                 const firstLog = groupLogs[0];
                 const timestamp = new Date(firstLog.timestamp).toLocaleString();
+                
+                const status = groupLogs.some(log => log.status === 'failed') ? 'failed' :
+                    groupLogs.some(log => log.status === 'skipped') ? 'skipped' : 'success';
+
                 return new WorkitemItem(
                     `同步操作 (${timestamp})`,
                     this.syncLogManager,
                     this,
-                    undefined,  // command 会在构造函数中设置
                     element.filePath,
                     undefined,
                     undefined,
                     undefined,
                     undefined,
-                    false,
-                    undefined,
+                    true,  // isLogGroup
                     groupId,
-                    true
+                    status
                 );
             });
         }
@@ -368,11 +369,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             return [new WorkitemItem(
                 '点击配置扫描路径',
                 this.syncLogManager,
-                this,
-                {
-                    command: 'markdown-ado-sync.configureScanPath',
-                    title: '配置扫描路径'
-                }
+                this
             )];
         }
 
@@ -385,11 +382,6 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                         metadata.title,
                         this.syncLogManager,
                         this,
-                        {
-                            command: 'vscode.open',
-                            title: '打开文件',
-                            arguments: [vscode.Uri.file(file)]
-                        },
                         file,
                         metadata.state,
                         metadata.workitemId,
