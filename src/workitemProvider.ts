@@ -379,23 +379,30 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             const files = await this.markdownParser.scanDirectory(scanPath);
             const workitems = await Promise.all(
                 files.map(async (file: string) => {
-                    const metadata = await this.markdownParser.parseMetadata(file);
-                    const item = new WorkitemItem(
-                        metadata.title,
-                        this.syncLogManager,
-                        this,
-                        file,
-                        metadata.state,
-                        metadata.workitemId,
-                        metadata.workitemUrl,
-                        metadata.type,
-                        false
-                    );
-                    this.itemMap.set(file, item);
-                    return item;
+                    try
+                    {
+                        const metadata = await this.markdownParser.parseMetadata(file);
+                        const item = new WorkitemItem(
+                            metadata.title,
+                            this.syncLogManager,
+                            this,
+                            file,
+                            metadata.state,
+                            metadata.workitemId,
+                            metadata.workitemUrl,
+                            metadata.type,
+                            false
+                        );
+                        this.itemMap.set(file, item);
+                        return item;
+                    }
+                    catch (error)
+                    {
+                        return null;
+                    }
                 })
             );
-            return workitems;
+            return workitems.filter(x => x !== null);
         } catch (error) {
             vscode.window.showErrorMessage(`获取工作项失败: ${error instanceof Error ? error.message : String(error)}`);
             return [];

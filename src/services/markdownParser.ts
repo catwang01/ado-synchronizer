@@ -54,24 +54,35 @@ export class MarkdownParser {
     }
 
     async parseMetadata(filePath: string): Promise<Metadata> {
-        try {
-            const content = await fs.readFile(filePath, 'utf-8');
-            const metadata = this.parseMetadataFromContent(content);
-            
-            // 如果没有标题，使用文件名
-            if (!metadata.title) {
-                metadata.title = path.basename(filePath, '.md');
-            }
-            
-            return metadata;
-        } catch (error) {
-            throw new Error(`解析文件失败: ${error instanceof Error ? error.message : String(error)}`);
+        const content = await fs.readFile(filePath, 'utf-8');
+        const metadata = this.parseMetadataFromContent(content);
+
+        // 如果没有标题，使用文件名
+        if (!metadata.title) {
+            metadata.title = path.basename(filePath, '.md');
         }
+
+        if (!metadata.workitemId && !metadata.workitemUrl) {
+            throw new Error('缺少工作项 ID 或 URL');
+        }
+
+        if (!metadata.state) {
+            throw new Error('缺少状态');
+        }
+        
+        return metadata;
     }
 
     private parseMetadataFromContent(content: string): Metadata {
         const metadata = this.extractMetadata(content);
         this.processWorkItemUrls(metadata);
+
+        if (!metadata.workitemId && !metadata.workitemUrl) {
+            throw new Error('缺少工作项 ID 或 URL');
+        }
+        if (!metadata.state) {
+            throw new Error('缺少状态');
+        }
         return metadata;
     }
 
@@ -88,13 +99,13 @@ export class MarkdownParser {
                 metadataLines.forEach(line => {
                     const [key, ...valueParts] = line.split(':');
                     const value = valueParts.join(':').trim();
-                    const trimmedKey = key.trim();
+                    const trimmedKey = key.trim().toLowerCase();
                     if (trimmedKey && value) {
                         switch (trimmedKey) {
-                            case 'workitemId':
+                            case 'workitemid':
                                 metadata.workitemId = value;
                                 break;
-                            case 'workitemUrl':
+                            case 'workitemurl':
                                 metadata.workitemUrl = value;
                                 break;
                             case 'type':
