@@ -1,23 +1,9 @@
-export interface WorkItem {
-    id: string;
-    title: string;
-    type: string;
-    state: string;
-}
-
-export interface WorkItemUpdate {
-    title: string;
-    description: string;
-    state: string;
-}
-
-export interface WorkItemComment {
-    id: string;
-    text: string;
-}
+import { RemoteWorkItem } from "./WorkItem";
+import { WorkItemComment } from "./WorkItemComment";
+import { WorkItemUpdate } from "./WorkItemUpdate";
 
 export interface IAdoService {
-    getWorkItem(id: string): Promise<WorkItem>;
+    getWorkItem(id: string): Promise<RemoteWorkItem>;
     updateWorkItem(id: string, update: WorkItemUpdate): Promise<void>;
     createWorkItem(type: string, update: WorkItemUpdate): Promise<string>;
     validateToken(): Promise<boolean>;
@@ -26,4 +12,5 @@ export interface IAdoService {
     getComments(workItemId: string): Promise<WorkItemComment[]>;
     updateComment(workItemId: string, commentId: string, comment: string): Promise<void>;
     deleteComment(workItemId: string, commentId: string): Promise<void>;
+    getWorkItemDetails(id: string): Promise<RemoteWorkItem>;
 } 

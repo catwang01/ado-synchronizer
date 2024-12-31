@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import { IAdoService } from './services/adoService';
-import { MarkdownParser, Metadata, CommentSection } from './services/markdownParser';
+import { MarkdownParser, CommentSection } from './services/markdownParser';
+import { Metadata } from './services/Metadata';
 import { log } from './utils';
 import { SyncStateManager } from './services/syncStateManager';
 import * as fs from 'fs';
 import { ISyncLogManager, SyncLogEntry } from './services/interfaces/ISyncLogManager';
+import { StateTransformer } from './services/stateTransformer';
 
 // 私有 symbol 用于存储 provider 引用
 const providerSymbol = Symbol('provider');
@@ -135,7 +137,7 @@ export class WorkitemItem extends vscode.TreeItem {
         if (this.isLogGroup) {
             return vscode.TreeItemCollapsibleState.None;
         }
-        
+
         return this.filePath && this.syncLogManager?.getLogs(this.filePath).length > 0
             ? vscode.TreeItemCollapsibleState.Collapsed
             : vscode.TreeItemCollapsibleState.None;
@@ -335,7 +337,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             return Array.from(groupedLogs.entries()).map(([groupId, groupLogs]) => {
                 const firstLog = groupLogs[0];
                 const timestamp = new Date(firstLog.timestamp).toLocaleString();
-                
+
                 const status = groupLogs.some(log => log.status === 'failed') ? 'failed' :
                     groupLogs.some(log => log.status === 'skipped') ? 'skipped' : 'success';
 
@@ -519,68 +521,88 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 message: '开始同步...',
                 groupId
             });
+
             const content = await fs.promises.readFile(filePath, 'utf-8');
-            const { metadata, description, comments } = this.markdownParser.parseContent(content);
-            if (!metadata.state) {
+            let { metadata, description, comments } = this.markdownParser.parseContent(content);
+            if (metadata.workitemId === undefined || metadata.workitemId === null || metadata.workitemId === '') {
                 this.syncLogManager.addLog(filePath, {
                     timestamp: Date.now(),
                     status: 'failed',
-                    message: '同步失败',
-                    details: '工作项状态为空',
+                    message: '工作项 ID 缺失',
+                    details: `工作项 ID 缺失`,
                     groupId
                 });
                 this.updateItemIcon(filePath, 'failed');
                 return 'failed';
             }
 
-            if (metadata.workitemId) {
-                // 更新现有工作项
-                const remoteWorkItem = await this.adoService.getWorkItem(metadata.workitemId);
-                if (remoteWorkItem.state === metadata.state) {
-                    this.syncLogManager.addLog(filePath, {
-                        timestamp: Date.now(),
-                        status: 'skipped',
-                        message: '工作项状态相同，跳过同步',
-                        details: `工作项 ${metadata.workitemId} 状态为 ${metadata.state}`,
-                        groupId
-                    });
-                    this.updateItemIcon(filePath, 'success');
-                    return 'skipped';
-                }
+            // 获取远程工作项信息
+            const workItem = await this.adoService.getWorkItem(metadata.workitemId);
+            let needsUpdate = false;
+            const updates: Partial<Metadata> = {};
 
-                await this.adoService.updateWorkItem(metadata.workitemId, {
-                    title: metadata.title,
-                    description: description,
-                    state: metadata.state
-                });
-
+            // 如果没有 type，从 ADO 获取
+            if (!metadata.type) {
+                updates.type = workItem.type;
+                needsUpdate = true;
                 this.syncLogManager.addLog(filePath, {
                     timestamp: Date.now(),
                     status: 'success',
-                    message: '更新工作项',
-                    details: `更新工作项 ${metadata.workitemId} 为 ${metadata.state}`,
+                    message: '从 ADO 获取工作项类型',
+                    details: `类型: ${workItem.type}`,
                     groupId
                 });
-
-                // 同步评论
-                await this.syncComments(metadata.workitemId, comments, content, filePath, groupId);
-            } else {
-                // 创建新工作项
-                const id = await this.adoService.createWorkItem(metadata.type || 'Task', {
-                    title: metadata.title,
-                    description: description,
-                    state: metadata.state || ''
-                });
-
-                // 添加评论
-                for (const comment of comments) {
-                    await this.adoService.addComment(id, comment.text);
-                }
-
-                // 更新文件中的工作项 ID
-                const updatedContent = await this.markdownParser.updateWorkItemId(content, id);
-                await fs.promises.writeFile(filePath, updatedContent, 'utf-8');
             }
+
+            // 如果没有 title，从 ADO 获取
+            if (!metadata.title) {
+                updates.title = workItem.title;
+                needsUpdate = true;
+                this.syncLogManager.addLog(filePath, {
+                    timestamp: Date.now(),
+                    status: 'success',
+                    message: '从 ADO 获取工作项标题',
+                    details: `标题: ${workItem.title}`,
+                    groupId
+                });
+            }
+
+            // 如果需要更新元数据
+            if (needsUpdate) {
+                await this.markdownParser.updateMetadata(filePath, updates);
+                metadata = { ...metadata, ...updates };
+            }
+
+            const adoState = StateTransformer.toAdoState(metadata.state, metadata.type);
+            // 检查状态是否需要同步
+            if (workItem.state === adoState) {
+                this.syncLogManager.addLog(filePath, {
+                    timestamp: Date.now(),
+                    status: 'skipped',
+                    message: '工作项状态相同，跳过同步',
+                    details: `工作项 ${metadata.workitemId} 状态为 ${metadata.state}, remote state: ${workItem.state}`,
+                    groupId
+                });
+                this.updateItemIcon(filePath, 'success');
+                return 'skipped';
+            }
+
+            await this.adoService.updateWorkItem(metadata.workitemId!, {
+                title: metadata.title,
+                description: description,
+                state: adoState
+            });
+
+            this.syncLogManager.addLog(filePath, {
+                timestamp: Date.now(),
+                status: 'success',
+                message: '更新工作项',
+                details: `更新工作项 ${metadata.workitemId} 从 ${workItem.state} 到 ${adoState}`,
+                groupId
+            });
+
+            // 同步评论
+            await this.syncComments(metadata.workitemId!, comments, content, filePath, groupId);
 
             // 更新同步状态
             await this.syncStateManager.updateSyncState(filePath, true, metadata.workitemId);
@@ -620,5 +642,25 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
     // 添加公共方法来获取日志组
     public getLogGroup(filePath: string, groupId: string): SyncLogEntry[] {
         return this.syncLogManager.getLogGroup(filePath, groupId);
+    }
+
+    private sortItems(items: WorkitemItem[]): WorkitemItem[] {
+        return items.sort((a, b) => {
+            // 如果是日志组，按时间戳排序
+            if (a.isLogGroup && b.isLogGroup) {
+                const aId = a.logGroupId || '';
+                const bId = b.logGroupId || '';
+                return bId.localeCompare(aId);  // 最新的在前面
+            }
+            
+            // 如果只有一个是日志组，日志组排在后面
+            if (a.isLogGroup) return 1;
+            if (b.isLogGroup) return -1;
+
+            // 普通工作项按 ID 排序
+            const aId = a.workitemId || '';
+            const bId = b.workitemId || '';
+            return aId.localeCompare(bId);
+        });
     }
 }

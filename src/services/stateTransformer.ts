@@ -1,81 +1,90 @@
+import { WorkItemType } from './workItemType';
+import { LocalWorkItemState } from './localWorkItemState';
+import { RemoteWorkItemState } from './interfaces/RemoteWorkItemState';
+
 export interface StateTransformRule {
-    localState: string;
-    adoState: string;
+    localState: LocalWorkItemState;
+    adoState: RemoteWorkItemState;
 }
 
 export class StateTransformer {
     private static readonly STATE_MAPS: { [type: string]: StateTransformRule[] } = {
-        'ToDo': [
-            { localState: 'To Do', adoState: 'New' },
-            { localState: 'Doing', adoState: 'Active' },
-            { localState: 'Done', adoState: 'Closed' }
-        ],
-        'Doing': [
-            { localState: 'To Do', adoState: 'Proposed' },
-            { localState: 'Doing', adoState: 'Active' },
-            { localState: 'Done', adoState: 'Resolved' }
-        ],
-        'Done': [
-            { localState: 'To Do', adoState: 'Proposed' },
-            { localState: 'Doing', adoState: 'In Progress' },
-            { localState: 'Done', adoState: 'Completed' }
+        [WorkItemType.EPIC]: [
+            { localState: LocalWorkItemState.PROPOSED, adoState: RemoteWorkItemState.TODO },
+            { localState: LocalWorkItemState.STARTED, adoState: RemoteWorkItemState.DOING },
+            { localState: LocalWorkItemState.CUT, adoState: RemoteWorkItemState.DONE },
+            { localState: LocalWorkItemState.COMPLETED, adoState: RemoteWorkItemState.DONE }
+        ], 
+        [WorkItemType.ISSUE]: [
+            { localState: LocalWorkItemState.PROPOSED, adoState: RemoteWorkItemState.TODO },
+            { localState: LocalWorkItemState.STARTED, adoState: RemoteWorkItemState.DOING },
+            { localState: LocalWorkItemState.CUT, adoState: RemoteWorkItemState.DONE },
+            { localState: LocalWorkItemState.COMPLETED, adoState: RemoteWorkItemState.DONE }
+        ], 
+        [WorkItemType.TASK]: [
+            { localState: LocalWorkItemState.PROPOSED, adoState: RemoteWorkItemState.TODO },
+            { localState: LocalWorkItemState.STARTED, adoState: RemoteWorkItemState.DOING },
+            { localState: LocalWorkItemState.CUT, adoState: RemoteWorkItemState.DONE },
+            { localState: LocalWorkItemState.COMPLETED, adoState: RemoteWorkItemState.DONE }
         ]
     };
 
-    private static readonly DEFAULT_TYPE = 'ToDo';
-    private static readonly DEFAULT_STATE = 'To Do';
+    static readonly DEFAULT_STATE = LocalWorkItemState.PROPOSED;
+    static readonly DEFAULT_TYPE = WorkItemType.EPIC;
+
+    static validateType(type?: string): boolean {
+        return type !== undefined && Object.keys(this.STATE_MAPS).includes(type);
+    }
+
+    private static getTypeMap(type: string): StateTransformRule[] {
+        if (!this.validateType(type)) {
+            throw new Error(`不支持的工作项类型: ${type}`);
+        }
+        return this.STATE_MAPS[type];
+    }
 
     /**
      * 将本地状态转换为 ADO 工作项状态
-     * @param localState 本地状态
-     * @param type 工作项类型
-     * @returns ADO 工作项状态
      */
-    static toAdoState(localState: string, type: string): string {
-        const typeMap = this.STATE_MAPS[type] || this.STATE_MAPS[this.DEFAULT_TYPE];
-        const rule = typeMap.find(r => r.localState === localState);
-        return rule?.adoState || this.DEFAULT_STATE;
+    static toAdoState(localState: LocalWorkItemState, type: string): RemoteWorkItemState {
+        const typeMap = this.getTypeMap(type);
+        const rule = typeMap.find((r: StateTransformRule) => r.localState === localState);
+        if (!rule) {
+            throw new Error(`无法将本地状态 "${localState}" 转换为 ADO 状态 (工作项类型: ${type})`);
+        }
+        return rule.adoState;
     }
 
     /**
      * 将 ADO 工作项状态转换为本地状态
-     * @param adoState ADO 工作项状态
-     * @param type 工作项类型
-     * @returns 本地状态
      */
-    static toLocalState(adoState: string, type: string): string {
-        const typeMap = this.STATE_MAPS[type] || this.STATE_MAPS[this.DEFAULT_TYPE];
-        const rule = typeMap.find(r => r.adoState === adoState);
-        return rule?.localState || 'To Do';
+    static toLocalState(adoState: RemoteWorkItemState, type: string): LocalWorkItemState {
+        const typeMap = this.getTypeMap(type);
+        const rule = typeMap.find((r: StateTransformRule) => r.adoState === adoState);
+        if (!rule) {
+            throw new Error(`无法将 ADO 状态 "${adoState}" 转换为本地状态 (工作项类型: ${type})`);
+        }
+        return rule.localState;
     }
 
     /**
      * 获取指定类型的所有可用本地状态
-     * @param type 工作项类型
-     * @returns 本地状态列表
      */
-    static getAvailableLocalStates(type: string): string[] {
-        const typeMap = this.STATE_MAPS[type] || this.STATE_MAPS[this.DEFAULT_TYPE];
-        return typeMap.map(rule => rule.localState);
+    static getAvailableLocalStates(type: string): LocalWorkItemState[] {
+        return this.getTypeMap(type).map((rule: StateTransformRule) => rule.localState);
     }
 
     /**
      * 获取指定类型的所有可用 ADO 状态
-     * @param type 工作项类型
-     * @returns ADO 状态列表
      */
-    static getAvailableAdoStates(type: string): string[] {
-        const typeMap = this.STATE_MAPS[type] || this.STATE_MAPS[this.DEFAULT_TYPE];
-        return typeMap.map(rule => rule.adoState);
+    static getAvailableAdoStates(type: string): RemoteWorkItemState[] {
+        return this.getTypeMap(type).map((rule: StateTransformRule) => rule.adoState);
     }
 
     /**
      * 验证本地状态对于指定类型是否有效
-     * @param localState 本地状态
-     * @param type 工作项类型
-     * @returns 是否有效
      */
-    static isValidLocalState(localState: string, type: string): boolean {
+    static isValidLocalState(localState: LocalWorkItemState, type: string): boolean {
         return this.getAvailableLocalStates(type).includes(localState);
     }
 } 

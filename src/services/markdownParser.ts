@@ -1,16 +1,10 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import MarkdownIt from 'markdown-it';
+import { Metadata } from './Metadata';
+import { LocalWorkItemStateHelper } from './localWorkItemState';
+import { WorkItemTypeHelper } from './workItemType';
 import { WorkitemItem } from '../workitemProvider';
-import { StateTransformer } from './stateTransformer';
-
-export interface Metadata {
-    title: string;
-    workitemId?: string;
-    workitemUrl?: string;
-    type?: string;
-    state: string;
-}
 
 export interface CommentSection {
     id?: string;  // ADO comment ID
@@ -29,42 +23,6 @@ export interface ParsedMarkdown {
 
 export class MarkdownParser {
     private md: MarkdownIt;
-
-    // 添加状态映射
-    private static readonly STATE_MAP: { [key: string]: string } = {
-        // 用户友好的状态名称
-        'NotStarted': 'To Do',
-        'Started': 'In Progress',
-        
-        // ADO 标准状态
-        'To Do': 'To Do',
-        'In Progress': 'Doing',
-        'Done': 'Done',
-        
-        // 默认状态
-        'NotSpecified': 'To Do',
-        
-        // 兼容旧的状态名称
-        'New': 'To Do',
-        'Active': 'In Progress',
-        'Closed': 'Done'
-    };
-
-    // 添加类型映射
-    private static readonly TYPE_MAP: { [key: string]: string } = {
-        // ADO 标准类型
-        'Todo': 'ToDo',
-        'Doing': 'Doing',
-        'Done': 'Done',
-        
-        // 默认类型
-        'NotSpecified': 'ToDo',
-        
-        // 兼容其他常用名称
-        'Task': 'ToDo',
-        'InProgress': 'Doing',
-        'Completed': 'Done'
-    };
 
     constructor() {
         this.md = new MarkdownIt();
@@ -119,11 +77,7 @@ export class MarkdownParser {
 
     private extractMetadata(content: string): Metadata {
         const lines = content.split('\n');
-        const metadata: Metadata = {
-            title: '',
-            state: 'NotSpecified',
-            type: 'ToDo'  // 设置默认类型
-        };
+        const metadata: Metadata = {} as Metadata;
 
         // 查找元数据部分
         const metadataStart = lines.findIndex(line => line.trim() === '---');
@@ -144,11 +98,10 @@ export class MarkdownParser {
                                 metadata.workitemUrl = value;
                                 break;
                             case 'type':
-                                metadata.type = MarkdownParser.TYPE_MAP[value] || 'ToDo';
+                                metadata.type = WorkItemTypeHelper.normalize(value);
                                 break;
                             case 'state':
-                                const localState = MarkdownParser.STATE_MAP[value] || 'To Do';
-                                metadata.state = StateTransformer.toAdoState(localState, metadata.type || 'ToDo');
+                                metadata.state = LocalWorkItemStateHelper.normalize(value);
                                 break;
                             case 'title':
                                 metadata.title = value;
@@ -158,7 +111,6 @@ export class MarkdownParser {
                 });
             }
         }
-
         return metadata;
     }
 
@@ -304,5 +256,56 @@ export class MarkdownParser {
 
         sections[index + 1] = lines.join('\n');
         return sections.join('\n===\n');
+    }
+
+    /**
+     * 更新 Markdown 文件的元数据
+     */
+    async updateMetadata(filePath: string, newMetadata: Partial<Metadata>): Promise<void> {
+        const content = await fs.readFile(filePath, 'utf-8');
+        const lines = content.split('\n');
+        
+        const metadataStart = lines.findIndex(line => line.trim() === '---');
+        const metadataEnd = lines.findIndex((line, i) => i > metadataStart && line.trim() === '---');
+        
+        if (metadataStart === -1 || metadataEnd === -1) {
+            // 如果没有元数据部分，创建一个新的
+            const newContent = this.createMetadataSection(newMetadata) + content;
+            await fs.writeFile(filePath, newContent, 'utf-8');
+            return;
+        }
+
+        // 更新现有元数据
+        const updatedMetadata = { ...this.parseMetadataFromContent(content), ...newMetadata };
+        const metadataLines = this.formatMetadata(updatedMetadata);
+        
+        const newContent = [
+            ...lines.slice(0, metadataStart + 1),
+            ...metadataLines,
+            ...lines.slice(metadataEnd)
+        ].join('\n');
+
+        await fs.writeFile(filePath, newContent, 'utf-8');
+    }
+
+    private formatMetadata(metadata: Metadata): string[] {
+        const lines: string[] = [];
+        
+        if (metadata.title) lines.push(`title: ${metadata.title}`);
+        if (metadata.workitemId) lines.push(`workitemId: ${metadata.workitemId}`);
+        if (metadata.workitemUrl) lines.push(`workitemUrl: ${metadata.workitemUrl}`);
+        if (metadata.type) lines.push(`type: ${metadata.type}`);
+        if (metadata.state) lines.push(`state: ${metadata.state}`);  // 枚举值会自动转换为字符串
+        
+        return lines;
+    }
+
+    private createMetadataSection(metadata: Partial<Metadata>): string {
+        return [
+            '---',
+            ...this.formatMetadata(metadata as Metadata),
+            '---',
+            '',
+        ].join('\n');
     }
 } 

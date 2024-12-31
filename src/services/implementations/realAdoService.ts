@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
-import { IAdoService, WorkItem, WorkItemUpdate, WorkItemComment } from '../interfaces/IAdoService';
+import { IAdoService } from '../interfaces/IAdoService';
+import { RemoteWorkItem } from '../interfaces/WorkItem';
+import { WorkItemUpdate } from "../interfaces/WorkItemUpdate";
+import { WorkItemComment } from "../interfaces/WorkItemComment";
 
 export class RealAdoService implements IAdoService {
     private token: string;
@@ -40,15 +43,28 @@ export class RealAdoService implements IAdoService {
         }
     }
 
-    async getWorkItem(id: string): Promise<WorkItem> {
+    private handleApiError(error: any, operation: string): never {
+        let errorMessage = `${operation}失败: `;
+        
+        if (axios.isAxiosError(error)) {
+            const axiosError = error;
+            errorMessage += [
+                `状态码: ${axiosError.response?.status || '未知'}`,
+                `URL: ${axiosError.config?.url || '未知'}`,
+                `响应: ${JSON.stringify(axiosError.response?.data) || '未知'}`,
+                `错误: ${axiosError.message}`
+            ].join(' | ');
+        } else {
+            errorMessage += error instanceof Error ? error.message : String(error);
+        }
+
+        throw new Error(errorMessage);
+    }
+
+    async getWorkItem(id: string): Promise<RemoteWorkItem> {
         try {
-            const response = await axios.get(
-                `https://dev.azure.com/${this.organization}/${this.project}/_apis/wit/workitems/${id}?api-version=6.0`,
-                {
-                    headers: {
-                        Authorization: `Basic ${Buffer.from(`:${this.token}`).toString('base64')}`
-                    }
-                }
+            const response = await this.client.get(
+                `_apis/wit/workitems/${id}?api-version=6.0`
             );
             return {
                 id: response.data.id.toString(),
@@ -57,7 +73,7 @@ export class RealAdoService implements IAdoService {
                 state: response.data.fields['System.State']
             };
         } catch (error) {
-            throw new Error(`获取工作项失败: ${error instanceof Error ? error.message : String(error)}`);
+            this.handleApiError(error, `获取工作项(ID: ${id})`);
         }
     }
 
@@ -94,7 +110,7 @@ export class RealAdoService implements IAdoService {
                 }
             );
         } catch (error) {
-            throw new Error(`更新工作项失败: ${error instanceof Error ? error.message : String(error)}`);
+            this.handleApiError(error, `更新工作项(ID: ${id})`);
         }
     }
 
@@ -133,7 +149,7 @@ export class RealAdoService implements IAdoService {
 
             return response.data.id.toString();
         } catch (error) {
-            throw new Error(`创建工作项失败: ${error instanceof Error ? error.message : String(error)}`);
+            this.handleApiError(error, `创建工作项(类型: ${type})`);
         }
     }
 
@@ -145,7 +161,7 @@ export class RealAdoService implements IAdoService {
             );
             return response.data.id;
         } catch (error) {
-            throw new Error(`添加评论失败: ${error instanceof Error ? error.message : String(error)}`);
+            this.handleApiError(error, `添加评论(工作项ID: ${id})`);
         }
     }
 
@@ -181,6 +197,23 @@ export class RealAdoService implements IAdoService {
             );
         } catch (error) {
             throw new Error(`删除评论失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    async getWorkItemDetails(id: string): Promise<RemoteWorkItem> {
+        try {
+            const response = await this.client.get(
+                `_apis/wit/workitems/${id}?api-version=6.0&$expand=all`
+            );
+            
+            return {
+                id: response.data.id.toString(),
+                title: response.data.fields['System.Title'],
+                type: response.data.fields['System.WorkItemType'],
+                state: response.data.fields['System.State']
+            };
+        } catch (error) {
+            throw new Error(`获取工作项详情失败: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 } 

@@ -10,6 +10,7 @@ import { SyncStateManager } from './services/syncStateManager';
 import { authentication } from 'vscode';
 import { SyncLogManager } from './services/implementations/syncLogManager';
 import { WelcomeViewProvider } from './welcomeViewProvider';
+import { assert } from 'console';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -27,6 +28,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	const markdownParser = new MarkdownParser();
 	const syncStateManager = new SyncStateManager(context);
 	const syncLogManager = new SyncLogManager(context);
+	assert(adoOrganization && adoProject, 'adoOrganization and adoProject must be set');
+
+	WorkitemItem.setAdoConfig(adoOrganization!, adoProject!);
 
 	// 注册欢迎视图
 	context.subscriptions.push(
