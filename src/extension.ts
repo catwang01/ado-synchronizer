@@ -104,15 +104,20 @@ export async function activate(context: vscode.ExtensionContext) {
 			(watcher as any)
 				.on('change', async (path: string) => {
 					log(`File changed: ${path}`);
-					await workitemProvider.refreshModified();
+					workitemProvider.refreshToState(path);
+					// not sure why this is needed
+					// await workitemProvider.refreshModified();
 				})
 				.on('add', async (path: string) => {
 					log(`File created: ${path}`);
-					workitemProvider.refreshModified();
+					workitemProvider.refresh();
+					// workitemProvider.refreshItem(path);
+					// workitemProvider.refreshModified();
 				})
 				.on('unlink', async (path: string) => {
 					log(`File deleted: ${path}`);
-					workitemProvider.refreshModified();
+					workitemProvider.refresh();
+					// workitemProvider.refreshModified();
 					syncStateManager.deleteSyncState(path);
 				});
 		}

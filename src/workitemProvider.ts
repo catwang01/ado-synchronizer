@@ -79,7 +79,7 @@ export class WorkitemItem extends vscode.TreeItem {
                 default:
                     return new vscode.ThemeIcon('circle-outline');
             }
-        } else if (this.syncing ) {
+        } else if (this.syncing) {
             return new vscode.ThemeIcon('sync~spin');
         } else {
             return new vscode.ThemeIcon('circle-outline');
@@ -286,42 +286,18 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         }
     }
 
-    async refreshItem(filePath: string): Promise<void> {
-        try {
-            const metadata = await this.markdownParser.parseMetadata(filePath);
-            const existingItem = this.itemMap.get(filePath);
-
-            if (existingItem) {
-                existingItem.update({
-                    title: metadata.title,
-                    state: metadata.state,
-                    workitemId: metadata.workitemId,
-                    workitemUrl: metadata.workitemUrl,
-                    type: metadata.type
-                });
-                this._onDidChangeTreeData.fire(existingItem);
-            } else {
-                // 如果是新项目，创建它
-                const newItem = new WorkitemItem(
-                    metadata.title,
-                    this.syncLogManager,
-                    this,
-                    filePath,
-                    metadata.state,
-                    metadata.workitemId,
-                    metadata.workitemUrl,
-                    metadata.type,
-                    false
-                );
-                this.itemMap.set(filePath, newItem);
-                this._onDidChangeTreeData.fire(newItem);
-            }
-        } catch (error) {
-            // 如果文件读取失败，从 Map 中移除并刷新整个视图
-            this.itemMap.delete(filePath);
-            this._onDidChangeTreeData.fire(undefined);
+    refreshToState(filePath: string): void {
+        this.updateItemIcon(filePath, 'default');
+        // 更新 label 显示修改状态
+        const item = this.itemMap.get(filePath);
+        if (item) {
+            this.markdownParser.parseMetadata(filePath).then(metadata => {
+                item.update(metadata);
+                this._onDidChangeTreeData.fire(item);
+            });
         }
     }
+
 
     getTreeItem(element: WorkitemItem): vscode.TreeItem {
         return element;
@@ -350,12 +326,10 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 const timestamp = new Date(latestLogEntry.timestamp).toLocaleString();
 
                 let groupStatus: GroupStatus;
-                if (firstGroupId === groupId && element.syncing)
-                {
+                if (firstGroupId === groupId && element.syncing) {
                     groupStatus = 'syncing';
                 }
-                else
-                {
+                else {
                     groupStatus = latestLogEntry.status;
                 }
 
@@ -397,8 +371,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             const files = await this.markdownParser.scanDirectory(scanPath);
             const workitems = await Promise.all(
                 files.map(async (file: string) => {
-                    try
-                    {
+                    try {
                         const metadata = await this.markdownParser.parseMetadata(file);
                         const item = new WorkitemItem(
                             metadata.title,
@@ -414,8 +387,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                         this.itemMap.set(file, item);
                         return item;
                     }
-                    catch (error)
-                    {
+                    catch (error) {
                         return null;
                     }
                 })
@@ -484,7 +456,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 timestamp: Date.now(),
                 status: 'success',
                 message: '更新评论',
-                details: `更新评论: ${fileComment.text.substring(0, 50)}...`,
+                details: `更新评论: from ${existingComment.text.substring(0, 50)} to ${fileComment.text.substring(0, 50)}...`,
                 groupId
             });
         }
@@ -601,15 +573,17 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             const adoState = StateTransformer.toAdoState(metadata.state, metadata.type);
             // 检查状态是否需要同步
             if (workItem.state === adoState) {
-                this.syncLogManager.addLog(filePath, {
-                    timestamp: Date.now(),
-                    status: 'skipped',
-                    message: '工作项状态相同，跳过同步',
-                    details: `工作项 ${metadata.workitemId} 状态为 ${metadata.state}, remote state: ${workItem.state}`,
-                    groupId
-                });
-                this.updateItemIcon(filePath, 'success');
-                return 'skipped';
+                if (!await this.syncStateManager.needsSync(filePath)) {
+                    this.syncLogManager.addLog(filePath, {
+                        timestamp: Date.now(),
+                        status: 'skipped',
+                        message: '工作项状态相同，跳过同步',
+                        details: `工作项 ${metadata.workitemId} 状态为 ${metadata.state}, remote state: ${workItem.state}`,
+                        groupId
+                    });
+                    this.updateItemIcon(filePath, 'success');
+                    return 'skipped';
+                }
             }
 
             await this.adoService.updateWorkItem(metadata.workitemId!, {
@@ -677,7 +651,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                 const bId = b.logGroupId || '';
                 return bId.localeCompare(aId);  // 最新的在前面
             }
-            
+
             // 如果只有一个是日志组，日志组排在后面
             if (a.isLogGroup) return 1;
             if (b.isLogGroup) return -1;
