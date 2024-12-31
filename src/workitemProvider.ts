@@ -21,6 +21,8 @@ export type WorkItemUpdate = Partial<{
     iconPath?: vscode.ThemeIcon;
 }>;
 
+export type GroupStatus = 'success' | 'failed' | 'skipped' | 'syncing';
+
 export class WorkitemItem extends vscode.TreeItem {
     private _state: string | undefined;
     private static adoConfig: { organization?: string; project?: string } = {};
@@ -32,7 +34,15 @@ export class WorkitemItem extends vscode.TreeItem {
     private _filePath?: string;
     private _logGroupId?: string;
     private _isLogGroup: boolean = false;
-    private _groupStatus?: 'success' | 'failed' | 'skipped';
+    private _groupStatus?: GroupStatus;
+    private _syncing: boolean = false;
+
+    get syncing(): boolean { return this._syncing; }
+
+    set syncing(syncing: boolean) {
+        this._syncing = syncing;
+        this.iconPath = this.computeInitialIcon();
+    }
 
     get workitemId(): string | undefined { return this._workitemId; }
     get workitemUrl(): string | undefined { return this._workitemUrl; }
@@ -41,7 +51,7 @@ export class WorkitemItem extends vscode.TreeItem {
     get workItemState(): string | undefined { return this._state; }
     get logGroupId(): string | undefined { return this._logGroupId; }
     get isLogGroup(): boolean { return this._isLogGroup; }
-    get groupStatus(): 'success' | 'failed' | 'skipped' | undefined { return this._groupStatus; }
+    get groupStatus(): GroupStatus | undefined { return this._groupStatus; }
 
     static setAdoConfig(organization: string, project: string) {
         WorkitemItem.adoConfig = { organization, project };
@@ -55,7 +65,7 @@ export class WorkitemItem extends vscode.TreeItem {
         return `https://dev.azure.com/${organization}/${project}/_workitems/edit/${workItemId}`;
     }
 
-    private computeInitialIcon(provider: WorkitemProvider): vscode.ThemeIcon {
+    private computeInitialIcon(): vscode.ThemeIcon {
         if (this.isLogGroup) {
             switch (this.groupStatus) {
                 case 'success':
@@ -63,11 +73,13 @@ export class WorkitemItem extends vscode.TreeItem {
                 case 'failed':
                     return new vscode.ThemeIcon('error');
                 case 'skipped':
-                    return new vscode.ThemeIcon('warning');
-                default:
                     return new vscode.ThemeIcon('history');
+                case 'syncing':
+                    return new vscode.ThemeIcon('sync~spin');
+                default:
+                    return new vscode.ThemeIcon('circle-outline');
             }
-        } else if (this.filePath && provider?.syncingItems.has(this.filePath)) {
+        } else if (this.syncing ) {
             return new vscode.ThemeIcon('sync~spin');
         } else {
             return new vscode.ThemeIcon('circle-outline');
@@ -102,7 +114,7 @@ export class WorkitemItem extends vscode.TreeItem {
         type?: string,
         isLogGroup: boolean = false,
         logGroupId?: string,
-        groupStatus?: 'success' | 'failed' | 'skipped'
+        groupStatus?: GroupStatus
     ) {
         const displayLabel = initialState ? `${label} (${initialState})` : label;
         super(displayLabel);
@@ -121,7 +133,7 @@ export class WorkitemItem extends vscode.TreeItem {
         this[providerSymbol] = provider;
 
         // 设置图标和工具提示
-        this.iconPath = this.computeInitialIcon(provider);
+        this.iconPath = this.computeInitialIcon();
         this.tooltip = this.computeTooltip();
         this.description = this.computeDescription();
 
@@ -196,9 +208,6 @@ export class WorkitemItem extends vscode.TreeItem {
 }
 
 export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
-    // 使内部类的 syncingItems 可以被 WorkitemItem 访问
-    readonly syncingItems: Set<string> = new Set();
-
     private _onDidChangeTreeData: vscode.EventEmitter<WorkitemItem | undefined> = new vscode.EventEmitter<WorkitemItem | undefined>();
     readonly onDidChangeTreeData: vscode.Event<WorkitemItem | undefined> = this._onDidChangeTreeData.event;
 
@@ -215,9 +224,9 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         const item = this.itemMap.get(filePath);
         if (item) {
             if (status === 'syncing') {
-                this.syncingItems.add(filePath);
+                item.syncing = true;
             } else {
-                this.syncingItems.delete(filePath);
+                item.syncing = false;
             }
 
             var iconPath: vscode.ThemeIcon;
@@ -324,22 +333,31 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             const logs = this.syncLogManager.getLogs(element.filePath);
             const groupedLogs = new Map<string, SyncLogEntry[]>();
 
-            // 按 groupId 分组
-            logs.forEach(log => {
+            let firstGroupId: string | undefined;
+            for (const log of logs) {
                 if (log.groupId) {
                     const group = groupedLogs.get(log.groupId) || [];
                     group.push(log);
                     groupedLogs.set(log.groupId, group);
+                    if (!firstGroupId) {
+                        firstGroupId = log.groupId;
+                    }
                 }
-            });
+            }
 
-            // 创建日志组项，并计算组的状态
             return Array.from(groupedLogs.entries()).map(([groupId, groupLogs]) => {
-                const firstLog = groupLogs[0];
-                const timestamp = new Date(firstLog.timestamp).toLocaleString();
+                const latestLogEntry = groupLogs[0];
+                const timestamp = new Date(latestLogEntry.timestamp).toLocaleString();
 
-                const status = groupLogs.some(log => log.status === 'failed') ? 'failed' :
-                    groupLogs.some(log => log.status === 'skipped') ? 'skipped' : 'success';
+                let groupStatus: GroupStatus;
+                if (firstGroupId === groupId && element.syncing)
+                {
+                    groupStatus = 'syncing';
+                }
+                else
+                {
+                    groupStatus = latestLogEntry.status;
+                }
 
                 return new WorkitemItem(
                     `同步操作 (${timestamp})`,
@@ -352,7 +370,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
                     undefined,
                     true,  // isLogGroup
                     groupId,
-                    status
+                    groupStatus
                 );
             });
         }

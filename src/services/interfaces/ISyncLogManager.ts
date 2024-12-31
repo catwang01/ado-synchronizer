@@ -1,7 +1,7 @@
 export interface SyncLogEntry {
     id: string;
     timestamp: number;
-    status: 'success' | 'failed' | 'skipped';
+    status: 'success' | 'failed' | 'skipped' | 'syncing';
     message: string;
     details?: string;
     groupId?: string;
