@@ -9,6 +9,7 @@ import { log } from './utils';
 import { SyncStateManager } from './services/syncStateManager';
 import { authentication } from 'vscode';
 import { SyncLogManager } from './services/implementations/syncLogManager';
+import { WelcomeViewProvider } from './welcomeViewProvider';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -27,27 +28,42 @@ export async function activate(context: vscode.ExtensionContext) {
 	const syncStateManager = new SyncStateManager(context);
 	const syncLogManager = new SyncLogManager(context);
 
-	if (!await adoService.validateToken()) {
+	// 注册欢迎视图
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(
+			WelcomeViewProvider.viewType,
+			new WelcomeViewProvider(context.extensionUri)
+		)
+	);
+
+	// 注册登录命令
+	let signInCommand = vscode.commands.registerCommand('markdown-ado-sync.signin', async () => {
 		try {
-			const session = await authentication.getSession('microsoft', ['499b84ac-1321-427f-aa17-267ca6975798/user_impersonation'], {
-				createIfNone: true
-			});
+			const session = await authentication.getSession('microsoft', 
+				['499b84ac-1321-427f-aa17-267ca6975798/user_impersonation'], 
+				{ createIfNone: true }
+			);
 			
 			if (!session) {
-				vscode.window.showErrorMessage('需要 Azure DevOps 授权才能继续使用。请重新运行命令进行授权。');
+				vscode.window.showErrorMessage('需要 Azure DevOps 授权才能继续使用。');
 				return;
 			}
 			
 			adoService.updateToken(session.accessToken);
+			await vscode.commands.executeCommand('setContext', 'markdown-ado-sync:authenticated', true);
+			vscode.window.showInformationMessage('登录成功！');
 		} catch (error) {
 			vscode.window.showErrorMessage(`授权失败: ${error instanceof Error ? error.message : String(error)}`);
-			return;
 		}
+	});
+
+	// 检查认证状态
+	if (await adoService.validateToken()) {
+		await vscode.commands.executeCommand('setContext', 'markdown-ado-sync:authenticated', true);
+	} else {
+		await vscode.commands.executeCommand('setContext', 'markdown-ado-sync:authenticated', false);
 	}
 
-	// 设置 ADO 配置
-	WorkitemItem.setAdoConfig(adoOrganization || '', adoProject || '');
-	
 	// 创建 TreeView Provider
 	const workitemProvider = new WorkitemProvider(
 		adoService, 
@@ -199,6 +215,8 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 			}
 	});
+
+	context.subscriptions.push(signInCommand);
 }
 
 // This method is called when your extension is deactivated

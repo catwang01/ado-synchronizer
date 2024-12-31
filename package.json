@@ -61,9 +61,17 @@
     "views": {
       "markdown-ado-sync": [
         {
+          "type": "webview",
+          "id": "adoWelcome",
+          "name": "Welcome",
+          "icon": "media/ado.svg",
+          "when": "!markdown-ado-sync:authenticated"
+        },
+        {
           "id": "adoWorkitems",
           "name": "ADO Workitems",
-          "icon": "media/ado.svg"
+          "icon": "media/ado.svg",
+          "when": "markdown-ado-sync:authenticated"
         }
       ]
     },
