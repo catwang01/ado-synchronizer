@@ -171,7 +171,7 @@ export class RealAdoService implements IAdoService {
                 `_apis/wit/workitems/${workItemId}/comments?api-version=6.0-preview`
             );
             return response.data.comments.map((comment: any) => ({
-                id: comment.id,
+                id: comment.id.toString(),
                 text: comment.text
             }));
         } catch (error) {
