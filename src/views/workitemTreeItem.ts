@@ -118,13 +118,13 @@ export class WorkitemTreeItem extends vscode.TreeItem {
         // 首先检查状态
         switch (this._treeItemStatus) {
             case 'syncing':
-                return new vscode.ThemeIcon('sync~spin');
+                return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('testing.iconQueued'));
             case 'success':
-                return new vscode.ThemeIcon('check');
+                return new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
             case 'failed':
-                return new vscode.ThemeIcon('error');
+                return new vscode.ThemeIcon('error', new vscode.ThemeColor('testing.iconFailed')); 
             case 'skipped':
-                return new vscode.ThemeIcon('warning');
+                return new vscode.ThemeIcon('warning', new vscode.ThemeColor('testing.iconSkipped'));
         }
 
         // 如果状态是 default，则根据工作项类型显示图标
