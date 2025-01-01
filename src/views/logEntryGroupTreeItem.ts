@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import { SyncLogEntry } from '../services/interfaces/ISyncLogManager';
+import { WorkitemTreeItem } from './workitemTreeItem';
 
 export class LogEntryGroupTreeItem extends vscode.TreeItem {
     constructor(
         public readonly timestamp: number,
         public readonly status: 'success' | 'failed' | 'skipped' | 'syncing',
         public readonly filePath: string,
-        public readonly groupId: string
+        public readonly groupId: string,
+        public readonly parentItem: WorkitemTreeItem
     ) {
         const label = `同步操作 (${new Date(timestamp).toLocaleString()})`;
         super(label, vscode.TreeItemCollapsibleState.None);
@@ -28,28 +30,31 @@ export class LogEntryGroupTreeItem extends vscode.TreeItem {
     private computeIcon(): vscode.ThemeIcon {
         switch (this.status) {
             case 'success':
-                return new vscode.ThemeIcon('check');
+                return new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
             case 'failed':
-                return new vscode.ThemeIcon('error');
+                return new vscode.ThemeIcon('error', new vscode.ThemeColor('testing.iconFailed'));
             case 'skipped':
-                return new vscode.ThemeIcon('warning');
+                return new vscode.ThemeIcon('warning', new vscode.ThemeColor('testing.iconSkipped'));
             case 'syncing':
-                return new vscode.ThemeIcon('sync~spin');
+                return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('testing.iconQueued'));
             default:
-                return new vscode.ThemeIcon('history');
+                return new vscode.ThemeIcon('circle-outline');
         }
     }
 
     private computeTooltip(): string {
-        return `同步状态: ${this.status.toUpperCase()}\n时间: ${new Date(this.timestamp).toLocaleString()}`;
+        const workItemInfo = this.parentItem ? 
+            `工作项: ${this.parentItem.label} (#${this.parentItem.workitemId})\n` : '';
+        return `${workItemInfo}同步状态: ${this.status.toUpperCase()}\n时间: ${new Date(this.timestamp).toLocaleString()}`;
     }
 
-    static fromLogEntry(entry: SyncLogEntry, filePath: string): LogEntryGroupTreeItem {
+    static fromLogEntry(entry: SyncLogEntry, parentItem: WorkitemTreeItem, status?: 'success' | 'failed' | 'skipped' | 'syncing'): LogEntryGroupTreeItem {
         return new LogEntryGroupTreeItem(
             entry.timestamp,
-            entry.status,
-            filePath,
-            entry.groupId!
+            status ?? entry.status,
+            parentItem.filePath!,
+            entry.groupId!,
+            parentItem
         );
     }
 } 

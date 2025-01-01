@@ -99,10 +99,18 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
             }
         }
 
-        return Array.from(groupedLogs.entries()).map(([groupId, groupLogs]) => {
+        const logItems: LogEntryGroupTreeItem[] = [];
+        let firstLog = false;
+        for (const [_, groupLogs] of groupedLogs.entries()) {
             const latestLog = groupLogs[0];
-            return LogEntryGroupTreeItem.fromLogEntry(latestLog, element.filePath!);
-        });
+            if (!firstLog && element.treeItemStatus === 'syncing') {
+                firstLog = true;
+                logItems.push(LogEntryGroupTreeItem.fromLogEntry(latestLog, element, 'syncing'));
+                continue;
+            }
+            logItems.push(LogEntryGroupTreeItem.fromLogEntry(latestLog, element));
+        }
+        return logItems;
     }
 
     private async buildWorkItemGroups(): Promise<WorkitemGroup[]> {
