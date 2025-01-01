@@ -207,9 +207,9 @@ export class WorkitemItem extends vscode.TreeItem {
     }
 }
 
-export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<WorkitemItem | undefined> = new vscode.EventEmitter<WorkitemItem | undefined>();
-    readonly onDidChangeTreeData: vscode.Event<WorkitemItem | undefined> = this._onDidChangeTreeData.event;
+export class WorkitemProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+    private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined> = new vscode.EventEmitter<vscode.TreeItem | undefined>();
+    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined> = this._onDidChangeTreeData.event;
 
     private itemMap: Map<string, WorkitemItem> = new Map();
 
@@ -350,12 +350,14 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         });
     }
 
-    async getChildren(element?: WorkitemItem): Promise<WorkitemItem[]> {
+    async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
         if (!element) {
             return this.scanWorkItems();
         }
-        if (element?.filePath && !element.isLogGroup) {
-            return this.getLogGroupItems(element);
+        if (element instanceof WorkitemItem) {
+            if (element?.filePath && !element.isLogGroup) {
+                return this.getLogGroupItems(element);
+            }
         }
         return [];
     }
