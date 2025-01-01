@@ -44,7 +44,7 @@ export class MarkdownParser {
 
     async scanDirectory(dirPath: string): Promise<string[]> {
         try {
-            const files = await fs.readdir(dirPath);
+            const files = await fs.readdir(dirPath, { recursive: true });
             return files
                 .filter(file => file.endsWith('.md'))
                 .map(file => path.join(dirPath, file));
@@ -112,6 +112,7 @@ export class MarkdownParser {
                                 metadata.type = WorkItemTypeHelper.normalize(value);
                                 break;
                             case 'state':
+                            case 'workitemstate':
                                 metadata.state = LocalWorkItemStateHelper.normalize(value);
                                 break;
                             case 'title':
