@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { MarkdownParser } from '../services/markdownParser';
-import { WorkitemItem } from '../views/workitemProvider';
+import { WorkitemTreeItem } from '../views/workitemTreeItem';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -12,7 +12,7 @@ suite('MarkdownParser Test Suite', () => {
     setup(async () => {
         parser = new MarkdownParser();
         tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'markdown-test-'));
-        WorkitemItem.setAdoConfig('testorg', 'testproject');
+        WorkitemTreeItem.setAdoConfig('testorg', 'testproject');
     });
 
     teardown(async () => {

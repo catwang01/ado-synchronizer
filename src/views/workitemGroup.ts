@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
-import { WorkitemItem } from './workitemProvider';
+import { WorkitemTreeItem } from './workitemTreeItem';
 
 export class WorkitemGroup extends vscode.TreeItem {
     constructor(
         label: string,
-        public readonly children: WorkitemItem[],
+        public readonly children: WorkitemTreeItem[],
         public readonly parentId?: string,
         collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Expanded
     ) {

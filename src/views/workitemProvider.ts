@@ -9,173 +9,13 @@ import { SyncStateManager } from '../services/syncStateManager';
 import { log } from '../utils';
 import { WorkitemGroup } from './workitemGroup';
 import { LogEntryGroupTreeItem } from './logEntryGroupTreeItem';
+import { WorkitemTreeItem } from './workitemTreeItem';
 
-// 私有 symbol 用于存储 provider 引用
-const providerSymbol = Symbol('provider');
+export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem> {
+    private _onDidChangeTreeData: vscode.EventEmitter<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem | undefined> = new vscode.EventEmitter<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem | undefined>();
+    readonly onDidChangeTreeData: vscode.Event<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem | undefined> = this._onDidChangeTreeData.event;
 
-export type WorkItemUpdate = Partial<{
-    title?: string;
-    state?: string;
-    workitemId?: string;
-    workitemUrl?: string;
-    type?: string;
-    description?: string;
-    iconPath?: vscode.ThemeIcon;
-}>;
-
-export type GroupStatus = 'success' | 'failed' | 'skipped' | 'syncing';
-
-export class WorkitemItem extends vscode.TreeItem {
-    private static adoConfig: { organization?: string; project?: string } = {};
-    private _syncing: boolean = false;
-    private [providerSymbol]: WorkitemProvider;
-
-    private _workitemId?: string;
-    private _workitemUrl?: string;
-    private _type?: string;
-    private _filePath?: string;
-    private _state?: string;
-
-    get workitemId(): string | undefined { return this._workitemId; }
-    get workitemUrl(): string | undefined { return this._workitemUrl; }
-    get type(): string | undefined { return this._type; }
-    get filePath(): string | undefined { return this._filePath; }
-    get state(): string | undefined { return this._state; }
-    get syncing(): boolean { return this._syncing; }
-    set syncing(value: boolean) {
-        this._syncing = value;
-        this.iconPath = this.computeInitialIcon();
-    }
-
-    constructor(
-        label: string,
-        provider: WorkitemProvider,
-        filePath?: string,
-        workitemId?: string,
-        workitemUrl?: string,
-        type?: string,
-        state?: string
-    ) {
-        // 使用公共方法检查日志
-        const hasLogs = filePath ? provider.hasLogs(filePath) : false;
-        super(label, hasLogs ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
-
-        this[providerSymbol] = provider;
-        this._workitemId = workitemId;
-        this._workitemUrl = workitemUrl;
-        this._type = type;
-        this._filePath = filePath;
-        this._state = state;
-
-        // 设置图标和工具提示
-        this.iconPath = this.computeInitialIcon();
-        this.tooltip = this.computeTooltip();
-        this.description = this.computeDescription();
-
-        // 设置命令和上下文
-        this.command = this.computeCommand();
-        if (this.filePath && (this.workitemId || this.workitemUrl)) {
-            this.contextValue = 'workitem';
-        }
-    }
-
-    static setAdoConfig(organization: string, project: string) {
-        WorkitemItem.adoConfig = { organization, project };
-    }
-
-    static getWorkItemUrl(workItemId: string): string | undefined {
-        const { organization, project } = WorkitemItem.adoConfig;
-        if (!organization || !project) {
-            return undefined;
-        }
-        return `https://dev.azure.com/${organization}/${project}/_workitems/edit/${workItemId}`;
-    }
-
-    setSyncingState(syncing: boolean): void {
-        this.syncing = syncing;
-    }
-
-    private computeInitialIcon(): vscode.ThemeIcon {
-        if (this._syncing) {
-            return new vscode.ThemeIcon('sync~spin');
-        }
-        return new vscode.ThemeIcon('circle-outline');
-    }
-
-    private computeTooltip(): vscode.MarkdownString {
-        const tooltipParts = [
-            this.label as string,
-            this.workitemId ? `ID: ${this.workitemId}` : undefined,
-            this.workitemUrl ? `[在 Azure DevOps 中打开](${this.workitemUrl})` : undefined,
-            this.type ? `类型: ${this.type}` : undefined,
-            this.state ? `状态: ${this.state}` : undefined,
-            this.filePath ? `文件: ${this.filePath}` : undefined
-        ].filter(Boolean);
-
-        const tooltip = new vscode.MarkdownString(tooltipParts.join('\n\n'), true);
-        tooltip.isTrusted = true;
-        tooltip.supportHtml = true;
-        return tooltip;
-    }
-
-    private computeDescription(): string {
-        const descriptionParts = [];
-        if (this.workitemId) {
-            descriptionParts.push(`#${this.workitemId}`);
-        }
-        if (this.type) {
-            descriptionParts.push(`[${this.type}]`);
-        }
-        if (this.state) {
-            descriptionParts.push(`(${this.state})`);
-        }
-        return descriptionParts.join(' ');
-    }
-
-    private computeCommand(): vscode.Command | undefined {
-        if (this.filePath) {
-            return {
-                command: 'vscode.open',
-                title: '打开文件',
-                arguments: [vscode.Uri.file(this.filePath)]
-            };
-        }
-        return undefined;
-    }
-
-    update(updates: {
-        title?: string;
-        state?: string;
-        workitemId?: string;
-        workitemUrl?: string;
-        iconPath?: vscode.ThemeIcon;
-    }): void {
-        if (updates.title) {
-            this.label = updates.title;
-        }
-        if (updates.state) {
-            this._state = updates.state;
-        }
-        if (updates.workitemId) {
-            this._workitemId = updates.workitemId;
-        }
-        if (updates.workitemUrl) {
-            this._workitemUrl = updates.workitemUrl;
-        }
-        if (updates.iconPath) {
-            this.iconPath = updates.iconPath;
-        }
-
-        this.description = this.computeDescription();
-        this.tooltip = this.computeTooltip();
-    }
-}
-
-export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem | WorkitemGroup | LogEntryGroupTreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<WorkitemItem | WorkitemGroup | LogEntryGroupTreeItem | undefined> = new vscode.EventEmitter<WorkitemItem | WorkitemGroup | LogEntryGroupTreeItem | undefined>();
-    readonly onDidChangeTreeData: vscode.Event<WorkitemItem | WorkitemGroup | LogEntryGroupTreeItem | undefined> = this._onDidChangeTreeData.event;
-
-    private itemMap: Map<string, WorkitemItem> = new Map();
+    private itemMap: Map<string, WorkitemTreeItem> = new Map();
     private _scanPath: string | undefined;
 
     constructor(
@@ -273,11 +113,11 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem | 
     }
 
 
-    getTreeItem(element: WorkitemItem): vscode.TreeItem {
+    getTreeItem(element: WorkitemTreeItem): vscode.TreeItem {
         return element;
     }
 
-    private getLogGroupItems(element: WorkitemItem): LogEntryGroupTreeItem[] {
+    private getLogGroupItems(element: WorkitemTreeItem): LogEntryGroupTreeItem[] {
         const logs = this.syncLogManager.getLogs(element.filePath!);
         if (!logs.length) {
             return [];
@@ -316,7 +156,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem | 
         );
 
         const validWorkitems = workitems.filter((x): x is NonNullable<typeof x> => x !== null);
-        const groupedByParent = new Map<string | undefined, WorkitemItem[]>();
+        const groupedByParent = new Map<string | undefined, WorkitemTreeItem[]>();
 
         validWorkitems.forEach(item => {
             const parentId = item.metadata.parentId;
@@ -347,9 +187,9 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem | 
         });
     }
 
-    async getChildren(element?: WorkitemItem | WorkitemGroup | LogEntryGroupTreeItem): Promise<(WorkitemItem | WorkitemGroup | LogEntryGroupTreeItem)[]> {
+    async getChildren(element?: WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem): Promise<(WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem)[]> {
         try {
-            if (element instanceof WorkitemItem && element.filePath) {
+            if (element instanceof WorkitemTreeItem && element.filePath) {
                 return this.getLogGroupItems(element);
             }
 
@@ -607,8 +447,8 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem | 
         label: string,
         filePath: string,
         metadata: Metadata
-    ): WorkitemItem {
-        return new WorkitemItem(
+    ): WorkitemTreeItem {
+        return new WorkitemTreeItem(
             label,
             this,
             filePath,

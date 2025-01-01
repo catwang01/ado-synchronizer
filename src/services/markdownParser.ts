@@ -4,7 +4,7 @@ import MarkdownIt from 'markdown-it';
 import { Metadata } from './Metadata';
 import { LocalWorkItemStateHelper } from './localWorkItemState';
 import { WorkItemTypeHelper } from './workItemType';
-import { WorkitemItem } from '../views/workitemProvider';
+import { WorkitemTreeItem } from '../views/workitemTreeItem';
 
 export interface CommentSection {
     id?: string;  // ADO comment ID
@@ -142,7 +142,7 @@ export class MarkdownParser {
         }
 
         if (metadata.workitemId && !metadata.workitemUrl) {
-            metadata.workitemUrl = WorkitemItem.getWorkItemUrl(metadata.workitemId);
+            metadata.workitemUrl = WorkitemTreeItem.getWorkItemUrl(metadata.workitemId);
         }
     }
 

@@ -1,7 +1,8 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { WorkitemProvider, WorkitemItem } from './views/workitemProvider';
+import { WorkitemProvider } from './views/workitemProvider';
+import { WorkitemTreeItem } from './views/workitemTreeItem';
 import { AdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
 import * as chokidar from 'chokidar';
@@ -11,6 +12,13 @@ import { authentication } from 'vscode';
 import { SyncLogManager } from './services/implementations/syncLogManager';
 import { WelcomeViewProvider } from './views/welcomeViewProvider';
 import { assert } from 'console';
+import { SyncLogEntry } from './services/interfaces/ISyncLogManager';
+
+// 添加日志类型定义
+interface LogMessage {
+	message?: string;
+	increment?: number;
+}
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -30,7 +38,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	const syncLogManager = new SyncLogManager(context);
 	assert(adoOrganization && adoProject, 'adoOrganization and adoProject must be set');
 
-	WorkitemItem.setAdoConfig(adoOrganization!, adoProject!);
+	WorkitemTreeItem.setAdoConfig(adoOrganization!, adoProject!);
 
 	// 注册欢迎视图
 	context.subscriptions.push(
@@ -179,7 +187,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 
 	// 注册单个工作项同步命令
-	let syncSingleCommand = vscode.commands.registerCommand('markdown-ado-sync.syncSingle', async (item: WorkitemItem) => {
+	let syncSingleCommand = vscode.commands.registerCommand('markdown-ado-sync.syncSingle', async (item: WorkitemTreeItem) => {
 		if (item.filePath) {
 			await workitemProvider.syncSingleWorkitem(item.filePath);
 		}
@@ -194,7 +202,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		const logs = workitemProvider.getLogGroup(filePath, groupId);
 		
 		// 创建日志内容
-		const content = logs.map(log => {
+		const content = logs.map((log: SyncLogEntry) => {
 			const date = new Date(log.timestamp);
 			const timeStr = date.toLocaleString();
 			let result = `[${timeStr}] ${log.status.toUpperCase()}: ${log.message}`;
@@ -226,6 +234,15 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(signInCommand);
+
+	// 修复 log 参数的类型
+	await vscode.window.withProgress({
+		location: vscode.ProgressLocation.Notification,
+		title: "同步工作项",
+		cancellable: false
+	}, async (progress: vscode.Progress<LogMessage>) => {
+		// ... 其他代码保持不变 ...
+	});
 }
 
 // This method is called when your extension is deactivated
