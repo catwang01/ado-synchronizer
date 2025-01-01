@@ -303,100 +303,61 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         return element;
     }
 
-    async getChildren(element?: WorkitemItem): Promise<WorkitemItem[]> {
-        if (element?.filePath && !element.isLogGroup) {
-            // 只处理工作项层级：显示日志组
-            const logs = this.syncLogManager.getLogs(element.filePath);
-            const groupedLogs = new Map<string, SyncLogEntry[]>();
+    private getLogGroupItems(element: WorkitemItem): WorkitemItem[] {
+        if (!element.filePath) {
+            return [];
+        }
+        const logs = this.syncLogManager.getLogs(element.filePath);
+        const groupedLogs = new Map<string, SyncLogEntry[]>();
 
-            let firstGroupId: string | undefined;
-            for (const log of logs) {
-                if (log.groupId) {
-                    const group = groupedLogs.get(log.groupId) || [];
-                    group.push(log);
-                    groupedLogs.set(log.groupId, group);
-                    if (!firstGroupId) {
-                        firstGroupId = log.groupId;
-                    }
+        let firstGroupId: string | undefined;
+        for (const log of logs) {
+            if (log.groupId) {
+                const group = groupedLogs.get(log.groupId) || [];
+                group.push(log);
+                groupedLogs.set(log.groupId, group);
+                if (!firstGroupId) {
+                    firstGroupId = log.groupId;
                 }
             }
-
-            return Array.from(groupedLogs.entries()).map(([groupId, groupLogs]) => {
-                const latestLogEntry = groupLogs[0];
-                const timestamp = new Date(latestLogEntry.timestamp).toLocaleString();
-
-                let groupStatus: GroupStatus;
-                if (firstGroupId === groupId && element.syncing) {
-                    groupStatus = 'syncing';
-                }
-                else {
-                    groupStatus = latestLogEntry.status;
-                }
-
-                return new WorkitemItem(
-                    `同步操作 (${timestamp})`,
-                    this.syncLogManager,
-                    this,
-                    element.filePath,
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
-                    true,  // isLogGroup
-                    groupId,
-                    groupStatus
-                );
-            });
         }
 
-        if (element) {
-            return [];
-        }
+        return Array.from(groupedLogs.entries()).map(([groupId, groupLogs]) => {
+            const latestLogEntry = groupLogs[0];
+            const timestamp = new Date(latestLogEntry.timestamp).toLocaleString();
 
-        const config = vscode.workspace.getConfiguration('markdown-ado-sync');
-        const scanPath = config.get<string>('scanPath');
+            let groupStatus: GroupStatus;
+            if (firstGroupId === groupId && element.syncing) {
+                groupStatus = 'syncing';
+            }
+            else {
+                groupStatus = latestLogEntry.status;
+            }
 
-        // 清理 itemMap
-        this.itemMap.clear();
-
-        if (!scanPath) {
-            return [new WorkitemItem(
-                '点击配置扫描路径',
+            return new WorkitemItem(
+                `同步操作 (${timestamp})`,
                 this.syncLogManager,
-                this
-            )];
-        }
-
-        try {
-            const files = await this.markdownParser.scanDirectory(scanPath);
-            const workitems = await Promise.all(
-                files.map(async (file: string) => {
-                    try {
-                        const metadata = await this.markdownParser.parseMetadata(file);
-                        const item = new WorkitemItem(
-                            metadata.title,
-                            this.syncLogManager,
-                            this,
-                            file,
-                            metadata.state,
-                            metadata.workitemId,
-                            metadata.workitemUrl,
-                            metadata.type,
-                            false
-                        );
-                        this.itemMap.set(file, item);
-                        return item;
-                    }
-                    catch (error) {
-                        return null;
-                    }
-                })
+                this,
+                element.filePath,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                true,  // isLogGroup
+                groupId,
+                groupStatus
             );
-            return workitems.filter(x => x !== null);
-        } catch (error) {
-            vscode.window.showErrorMessage(`获取工作项失败: ${error instanceof Error ? error.message : String(error)}`);
-            return [];
+        });
+    }
+
+    async getChildren(element?: WorkitemItem): Promise<WorkitemItem[]> {
+        if (!element) {
+            return this.scanWorkItems();
         }
+        if (element?.filePath && !element.isLogGroup) {
+            return this.getLogGroupItems(element);
+        }
+        return [];
     }
 
     async syncWorkitems(): Promise<void> {
@@ -637,23 +598,49 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
         return this.syncLogManager.getLogGroup(filePath, groupId);
     }
 
-    private sortItems(items: WorkitemItem[]): WorkitemItem[] {
-        return items.sort((a, b) => {
-            // 如果是日志组，按时间戳排序
-            if (a.isLogGroup && b.isLogGroup) {
-                const aId = a.logGroupId || '';
-                const bId = b.logGroupId || '';
-                return bId.localeCompare(aId);  // 最新的在前面
-            }
+    private async scanWorkItems(): Promise<WorkitemItem[]> {
+        const config = vscode.workspace.getConfiguration('markdown-ado-sync');
+        const scanPath = config.get<string>('scanPath');
 
-            // 如果只有一个是日志组，日志组排在后面
-            if (a.isLogGroup) return 1;
-            if (b.isLogGroup) return -1;
+        this.itemMap.clear();
 
-            // 普通工作项按 ID 排序
-            const aId = a.workitemId || '';
-            const bId = b.workitemId || '';
-            return aId.localeCompare(bId);
-        });
+        if (!scanPath) {
+            return [new WorkitemItem(
+                '点击配置扫描路径',
+                this.syncLogManager,
+                this
+            )];
+        }
+
+        try {
+            const files = await this.markdownParser.scanDirectory(scanPath);
+            const workitems = await Promise.all(
+                files.map(async (file: string) => {
+                    try {
+                        const metadata = await this.markdownParser.parseMetadata(file);
+                        const item = new WorkitemItem(
+                            metadata.title,
+                            this.syncLogManager,
+                            this,
+                            file,
+                            metadata.state,
+                            metadata.workitemId,
+                            metadata.workitemUrl,
+                            metadata.type,
+                            false
+                        );
+                        this.itemMap.set(file, item);
+                        return item;
+                    }
+                    catch (error) {
+                        return null;
+                    }
+                })
+            );
+            return workitems.filter(x => x !== null);
+        } catch (error) {
+            vscode.window.showErrorMessage(`获取工作项失败: ${error instanceof Error ? error.message : String(error)}`);
+            return [];
+        }
     }
 }
