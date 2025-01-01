@@ -87,10 +87,13 @@
     "configuration": {
       "title": "Markdown ADO Sync",
       "properties": {
-        "markdown-ado-sync.scanPath": {
-          "type": "string",
-          "default": "",
-          "description": "要扫描的 Markdown 文件目录路径"
+        "markdown-ado-sync.scanPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "要扫描的 Markdown 文件目录路径列表"
         },
         "markdown-ado-sync.debug": {
           "type": "boolean",

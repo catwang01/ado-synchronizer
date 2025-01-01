@@ -16,7 +16,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
     readonly onDidChangeTreeData: vscode.Event<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem | undefined> = this._onDidChangeTreeData.event;
 
     private itemMap: Map<string, WorkitemTreeItem> = new Map();
-    private _scanPath: string | undefined;
+    private _scanPaths: string[] = [];
 
     constructor(
         private adoService: IAdoService,
@@ -24,14 +24,14 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         private syncStateManager: SyncStateManager,
         private syncLogManager: ISyncLogManager
     ) { 
-        this._scanPath = vscode.workspace.getConfiguration('markdown-ado-sync').get<string>('scanPath');
+        this._scanPaths = vscode.workspace.getConfiguration('markdown-ado-sync').get<string[]>('scanPaths') || [];
     }
 
-    get scanPath(): string {
-        if (!this._scanPath) {
+    get scanPaths(): string[] {
+        if (this._scanPaths.length === 0) {
             throw new Error('扫描路径未配置');
         }
-        return this._scanPath;
+        return this._scanPaths;
     }
 
     refresh(filePath?: string): void {
@@ -114,7 +114,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
     }
 
     private async buildWorkItemGroups(): Promise<WorkitemGroup[]> {
-        const files = await this.markdownParser.scanDirectory(this.scanPath);
+        const files = await this.markdownParser.scanDirectory(this.scanPaths);
         const workitems = await Promise.all(
             files.map(async (file: string) => {
                 try {

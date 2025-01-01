@@ -42,12 +42,19 @@ export class MarkdownParser {
         }
     }
 
-    async scanDirectory(dirPath: string): Promise<string[]> {
+    async scanDirectory(dirPaths: string[]): Promise<string[]> {
         try {
-            const files = await fs.readdir(dirPath, { recursive: true });
-            return files
-                .filter(file => file.endsWith('.md'))
-                .map(file => path.join(dirPath, file));
+            const allFiles: string[] = [];
+            
+            for (const dirPath of dirPaths) {
+                const files = await fs.readdir(dirPath, { recursive: true });
+                const markdownFiles = files
+                    .filter(file => file.endsWith('.md'))
+                    .map(file => path.join(dirPath, file));
+                allFiles.push(...markdownFiles);
+            }
+
+            return allFiles;
         } catch (error) {
             throw new Error(`扫描目录失败: ${error instanceof Error ? error.message : String(error)}`);
         }

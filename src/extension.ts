@@ -25,7 +25,7 @@ interface LogMessage {
 export async function activate(context: vscode.ExtensionContext) {
 	// 检查配置
 	const config = vscode.workspace.getConfiguration('markdown-ado-sync');
-	const scanPath = config.get<string>('scanPath');
+	const scanPaths = config.get<string[]>('scanPaths') || [];
 	const adoToken = config.get<string>('adoToken');
 	const adoOrganization = config.get<string>('adoOrganization');
 	const adoProject = config.get<string>('adoProject');
@@ -93,41 +93,39 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 
 		const config = vscode.workspace.getConfiguration('markdown-ado-sync');
-		const scanPath = config.get<string>('scanPath');
+		const scanPaths = config.get<string[]>('scanPaths') || [];
 
-		if (scanPath) {
-			log(`Scanning path: ${scanPath}`);
-			// TODO: only watch .md, .MD, .markdown files
-			watcher = chokidar.watch(scanPath, {
-				persistent: true,
-				ignoreInitial: true,
-				awaitWriteFinish: {
-					stabilityThreshold: 300,
-					pollInterval: 100
-				},
-				ignorePermissionErrors: true // Ignore permission errors
-			});
-
-			// 使用 FSWatcher 的 on 方法
-			(watcher as any)
-				.on('change', async (path: string) => {
-					log(`File changed: ${path}`);
-					workitemProvider.refreshToState(path);
-					// not sure why this is needed
-					// await workitemProvider.refreshModified();
-				})
-				.on('add', async (path: string) => {
-					log(`File created: ${path}`);
-					workitemProvider.refresh();
-					// workitemProvider.refreshItem(path);
-					// workitemProvider.refreshModified();
-				})
-				.on('unlink', async (path: string) => {
-					log(`File deleted: ${path}`);
-					workitemProvider.refresh();
-					// workitemProvider.refreshModified();
-					syncStateManager.deleteSyncState(path);
+		if (scanPaths.length > 0) {
+			try {
+				log(`Scanning paths: ${Array.isArray(scanPaths) ? scanPaths.join(', ') : scanPaths}`);
+				watcher = chokidar.watch(scanPaths, {
+					persistent: true,
+					ignoreInitial: true,
+					awaitWriteFinish: {
+						stabilityThreshold: 300,
+						pollInterval: 100
+					},
+					ignorePermissionErrors: true
 				});
+
+				// 使用 FSWatcher 的 on 方法
+				(watcher as any)
+					.on('change', async (path: string) => {
+						log(`File changed: ${path}`);
+						workitemProvider.refreshToState(path);
+					})
+					.on('add', async (path: string) => {
+						log(`File created: ${path}`);
+						workitemProvider.refresh();
+					})
+					.on('unlink', async (path: string) => {
+						log(`File deleted: ${path}`);
+						workitemProvider.refresh();
+						syncStateManager.deleteSyncState(path);
+					});
+			} catch (error) {
+				log(`Error starting watcher: ${error instanceof Error ? error.message : String(error)}`);
+			}
 		}
 	}
 
@@ -137,7 +135,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// 监听配置变化，重启监听器
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration('markdown-ado-sync.scanPath')) {
+			if (e.affectsConfiguration('markdown-ado-sync.scanPaths')) {
 				startWatcher();
 			}
 		})
@@ -153,15 +151,21 @@ export async function activate(context: vscode.ExtensionContext) {
 		const folders = await vscode.window.showOpenDialog({
 			canSelectFiles: false,
 			canSelectFolders: true,
-			canSelectMany: false,
+			canSelectMany: true,
+			openLabel: '选择扫描目录',
 			title: '选择要扫描的 Markdown 文件目录'
 		});
-		
-		if (folders && folders[0]) {
+
+		if (folders) {
 			const config = vscode.workspace.getConfiguration('markdown-ado-sync');
-			await config.update('scanPath', folders[0].fsPath, vscode.ConfigurationTarget.Global);
-			workitemProvider.refresh();
-			vscode.window.showInformationMessage(`扫描路径已设置为: ${folders[0].fsPath}`);
+			const currentPaths = config.get<string[]>('scanPaths') || [];
+			const newPaths = folders.map(folder => folder.fsPath);
+			
+			// 合并路径并去重
+			const uniquePaths = [...new Set([...currentPaths, ...newPaths])];
+			
+			await config.update('scanPaths', uniquePaths, vscode.ConfigurationTarget.Global);
+			vscode.window.showInformationMessage(`已添加 ${newPaths.length} 个扫描路径`);
 		}
 	});
 
@@ -246,15 +250,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		})
 	);
-
-	// 修复 log 参数的类型
-	await vscode.window.withProgress({
-		location: vscode.ProgressLocation.Notification,
-		title: "同步工作项",
-		cancellable: false
-	}, async (progress: vscode.Progress<LogMessage>) => {
-		// ... 其他代码保持不变 ...
-	});
 }
 
 // This method is called when your extension is deactivated
@@ -264,8 +259,8 @@ function updateConfigurationContext() {
 	const config = vscode.workspace.getConfiguration('markdown-ado-sync');
 	const organization = config.get<string>('adoOrganization');
 	const project = config.get<string>('adoProject');
-	const scanPath = config.get<string>('scanPath');
+	const scanPaths = config.get<string[]>('scanPaths') || [];
 
-	const allConfigured = !!(organization && project && scanPath);
+	const allConfigured = !!(organization && project && scanPaths.length > 0);
 	vscode.commands.executeCommand('setContext', 'markdown-ado-sync:allConfigured', allConfigured);
 }

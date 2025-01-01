@@ -92,7 +92,7 @@ workitemId: 123
         await fs.writeFile(path.join(tempDir, 'test.txt'), '');
         await fs.writeFile(path.join(tempDir, 'test3.MD'), '');
 
-        const files = await parser.scanDirectory(tempDir);
+        const files = await parser.scanDirectory([tempDir]);
         assert.strictEqual(files.length, 2); // 只包含 .md 文件，不包含 .MD 和 .txt
         assert.ok(files.every(file => file.endsWith('.md')));
     });

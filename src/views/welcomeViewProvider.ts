@@ -46,12 +46,12 @@ export class WelcomeViewProvider implements vscode.WebviewViewProvider {
         const config = vscode.workspace.getConfiguration('markdown-ado-sync');
         const organization = config.get<string>('adoOrganization');
         const project = config.get<string>('adoProject');
-        const scanPath = config.get<string>('scanPath');
+        const scanPaths = config.get<string[]>('scanPaths') || [];
 
         const configStatus = {
             organization: !!organization,
             project: !!project,
-            scanPath: !!scanPath
+            scanPath: scanPaths.length > 0
         };
 
         const allConfigured = Object.values(configStatus).every(Boolean);
@@ -97,6 +97,11 @@ export class WelcomeViewProvider implements vscode.WebviewViewProvider {
                 }
                 .success { color: var(--vscode-testing-iconPassed); }
                 .error { color: var(--vscode-testing-iconFailed); }
+                .scan-paths {
+                    margin: 5px 0;
+                    font-size: 0.9em;
+                    color: var(--vscode-descriptionForeground);
+                }
             </style>
         </head>
         <body>
@@ -124,10 +129,16 @@ export class WelcomeViewProvider implements vscode.WebviewViewProvider {
                     </span>
                     <span>扫描路径</span>
                 </div>
-                ${!configStatus.scanPath ? `
-                    <button onclick="configureScanPath()">选择路径</button>
-                ` : ''}
+                <button onclick="configureScanPath()">选择路径</button>
             </div>
+            ${scanPaths.length > 0 ? `
+                <div class="scan-paths">
+                    当前路径：
+                    <ul>
+                        ${scanPaths.map(path => `<li>${path}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
 
             ${!allConfigured ? `
                 <div style="margin: 20px 0;">
