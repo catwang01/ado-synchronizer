@@ -65,13 +65,13 @@
           "id": "adoWelcome",
           "name": "Welcome",
           "icon": "media/ado.svg",
-          "when": "!markdown-ado-sync:authenticated"
+          "when": "!markdown-ado-sync:authenticated || !markdown-ado-sync:allConfigured"
         },
         {
           "id": "adoWorkitems",
           "name": "ADO Workitems",
           "icon": "media/ado.svg",
-          "when": "markdown-ado-sync:authenticated"
+          "when": "markdown-ado-sync:authenticated && markdown-ado-sync:allConfigured"
         }
       ]
     },

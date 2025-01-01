@@ -235,6 +235,18 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(signInCommand);
 
+	// 初始检查配置状态
+	updateConfigurationContext();
+
+	// 监听配置变化
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('markdown-ado-sync')) {
+				updateConfigurationContext();
+			}
+		})
+	);
+
 	// 修复 log 参数的类型
 	await vscode.window.withProgress({
 		location: vscode.ProgressLocation.Notification,
@@ -247,3 +259,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
 // This method is called when your extension is deactivated
 export function deactivate() {}
+
+function updateConfigurationContext() {
+	const config = vscode.workspace.getConfiguration('markdown-ado-sync');
+	const organization = config.get<string>('adoOrganization');
+	const project = config.get<string>('adoProject');
+	const scanPath = config.get<string>('scanPath');
+
+	const allConfigured = !!(organization && project && scanPath);
+	vscode.commands.executeCommand('setContext', 'markdown-ado-sync:allConfigured', allConfigured);
+}

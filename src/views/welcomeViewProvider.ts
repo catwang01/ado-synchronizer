@@ -3,7 +3,9 @@ import * as vscode from 'vscode';
 export class WelcomeViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'adoWelcome';
 
-    constructor(private readonly _extensionUri: vscode.Uri) {}
+    constructor(
+        private readonly _extensionUri: vscode.Uri,
+    ) { }
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -19,108 +21,139 @@ export class WelcomeViewProvider implements vscode.WebviewViewProvider {
 
         // 处理来自 webview 的消息
         webviewView.webview.onDidReceiveMessage(async (data) => {
-            if (data.command === 'signin') {
-                await vscode.commands.executeCommand('markdown-ado-sync.signin');
+            switch (data.type) {
+                case 'configureSettings':
+                    await vscode.commands.executeCommand('workbench.action.openSettings', 'markdown-ado-sync');
+                    break;
+                case 'signin':
+                    await vscode.commands.executeCommand('markdown-ado-sync.signin');
+                    break;
+                case 'configureScanPath':
+                    await vscode.commands.executeCommand('markdown-ado-sync.configureScanPath');
+                    break;
+            }
+        });
+
+        // 监听配置变化
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('markdown-ado-sync')) {
+                webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
             }
         });
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
+        const config = vscode.workspace.getConfiguration('markdown-ado-sync');
+        const organization = config.get<string>('adoOrganization');
+        const project = config.get<string>('adoProject');
+        const scanPath = config.get<string>('scanPath');
+
+        const configStatus = {
+            organization: !!organization,
+            project: !!project,
+            scanPath: !!scanPath
+        };
+
+        const allConfigured = Object.values(configStatus).every(Boolean);
+
         return `<!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Markdown ADO Sync</title>
             <style>
                 body {
                     padding: 20px;
                     color: var(--vscode-foreground);
                     font-family: var(--vscode-font-family);
                 }
-                .header {
-                    margin-bottom: 20px;
-                }
-                .title {
-                    font-size: 1.2em;
-                    font-weight: bold;
-                    margin-bottom: 10px;
-                }
-                .description {
-                    opacity: 0.8;
-                    margin-bottom: 20px;
-                }
-                .features {
-                    margin: 20px 0;
-                }
-                .feature-item {
+                .config-item {
+                    margin: 10px 0;
                     display: flex;
                     align-items: center;
-                    margin: 8px 0;
+                    justify-content: space-between;
                 }
-                .feature-icon {
+                .config-left {
+                    display: flex;
+                    align-items: center;
+                }
+                .status-icon {
                     margin-right: 8px;
                 }
-                .button {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    padding: 8px 16px;
-                    background-color: var(--vscode-button-background);
+                button {
+                    background: var(--vscode-button-background);
                     color: var(--vscode-button-foreground);
                     border: none;
-                    border-radius: 4px;
+                    padding: 8px 12px;
                     cursor: pointer;
-                    font-size: 13px;
-                    margin-top: 20px;
+                    margin: 5px 0;
                 }
-                .button:hover {
-                    background-color: var(--vscode-button-hoverBackground);
+                .primary-button {
+                    width: 100%;
                 }
-                .button-icon {
-                    margin-right: 8px;
+                button:hover {
+                    background: var(--vscode-button-hoverBackground);
                 }
+                .success { color: var(--vscode-testing-iconPassed); }
+                .error { color: var(--vscode-testing-iconFailed); }
             </style>
         </head>
         <body>
-            <div class="header">
-                <div class="title">Markdown ADO Sync</div>
-                <div class="description">在 Markdown 和 Azure DevOps 工作项之间同步内容</div>
+            <h2>配置检查</h2>
+            <div class="config-item">
+                <div class="config-left">
+                    <span class="status-icon ${configStatus.organization ? 'success' : 'error'}">
+                        ${configStatus.organization ? '✓' : '✗'}
+                    </span>
+                    <span>Azure DevOps 组织</span>
+                </div>
+            </div>
+            <div class="config-item">
+                <div class="config-left">
+                    <span class="status-icon ${configStatus.project ? 'success' : 'error'}">
+                        ${configStatus.project ? '✓' : '✗'}
+                    </span>
+                    <span>Azure DevOps 项目</span>
+                </div>
+            </div>
+            <div class="config-item">
+                <div class="config-left">
+                    <span class="status-icon ${configStatus.scanPath ? 'success' : 'error'}">
+                        ${configStatus.scanPath ? '✓' : '✗'}
+                    </span>
+                    <span>扫描路径</span>
+                </div>
+                ${!configStatus.scanPath ? `
+                    <button onclick="configureScanPath()">选择路径</button>
+                ` : ''}
             </div>
 
-            <div class="features">
-                <div class="title">主要功能</div>
-                <div class="feature-item">
-                    <span class="feature-icon">📝</span>
-                    <span>自动同步 Markdown 文件到工作项</span>
+            ${!allConfigured ? `
+                <div style="margin: 20px 0;">
+                    <p>请完成以下配置以开始使用：</p>
+                    <button class="primary-button" onclick="configureSettings()">配置其他设置</button>
                 </div>
-                <div class="feature-item">
-                    <span class="feature-icon">💬</span>
-                    <span>支持双向同步评论</span>
+            ` : `
+                <div style="margin: 20px 0;">
+                    <p>所有配置已完成，请登录以开始使用：</p>
+                    <button class="primary-button" onclick="signin()">登录 Azure DevOps</button>
                 </div>
-                <div class="feature-item">
-                    <span class="feature-icon">👀</span>
-                    <span>实时监控文件变化</span>
-                </div>
-                <div class="feature-item">
-                    <span class="feature-icon">📊</span>
-                    <span>详细的同步日志</span>
-                </div>
-            </div>
-
-            <div class="start">
-                <div class="title">开始使用</div>
-                <div class="description">点击下方按钮登录 Azure DevOps 开始使用</div>
-                <button class="button" onclick="signin()">
-                    <span class="button-icon">$(sign-in)</span>
-                    登录 Azure DevOps
-                </button>
-            </div>
+            `}
 
             <script>
                 const vscode = acquireVsCodeApi();
                 
+                function configureSettings() {
+                    vscode.postMessage({ type: 'configureSettings' });
+                }
+                
                 function signin() {
-                    vscode.postMessage({ command: 'signin' });
+                    vscode.postMessage({ type: 'signin' });
+                }
+
+                function configureScanPath() {
+                    vscode.postMessage({ type: 'configureScanPath' });
                 }
             </script>
         </body>
