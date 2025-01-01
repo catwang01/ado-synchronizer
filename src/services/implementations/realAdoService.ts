@@ -64,13 +64,22 @@ export class RealAdoService implements IAdoService {
     async getWorkItem(id: string): Promise<RemoteWorkItem> {
         try {
             const response = await this.client.get(
-                `_apis/wit/workitems/${id}?api-version=6.0`
+                `_apis/wit/workitems/${id}?api-version=6.0&$expand=relations`
             );
+            
+            const parentRelation = response.data.relations?.find((r: any) => 
+                r.rel === 'System.LinkTypes.Hierarchy-Reverse'
+            );
+            const parentId = parentRelation ? 
+                parentRelation.url.split('/').pop() : 
+                undefined;
+
             return {
                 id: response.data.id.toString(),
                 title: response.data.fields['System.Title'],
                 type: response.data.fields['System.WorkItemType'],
-                state: response.data.fields['System.State']
+                state: response.data.fields['System.State'],
+                parentId
             };
         } catch (error) {
             this.handleApiError(error, `获取工作项(ID: ${id})`);
@@ -203,14 +212,22 @@ export class RealAdoService implements IAdoService {
     async getWorkItemDetails(id: string): Promise<RemoteWorkItem> {
         try {
             const response = await this.client.get(
-                `_apis/wit/workitems/${id}?api-version=6.0&$expand=all`
+                `_apis/wit/workitems/${id}?api-version=6.0&$expand=all,relations`
             );
             
+            const parentRelation = response.data.relations?.find((r: any) => 
+                r.rel === 'System.LinkTypes.Hierarchy-Reverse'
+            );
+            const parentId = parentRelation ? 
+                parentRelation.url.split('/').pop() : 
+                undefined;
+
             return {
                 id: response.data.id.toString(),
                 title: response.data.fields['System.Title'],
                 type: response.data.fields['System.WorkItemType'],
-                state: response.data.fields['System.State']
+                state: response.data.fields['System.State'],
+                parentId
             };
         } catch (error) {
             throw new Error(`获取工作项详情失败: ${error instanceof Error ? error.message : String(error)}`);

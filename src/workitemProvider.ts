@@ -1,12 +1,12 @@
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { IAdoService } from './services/adoService';
-import { MarkdownParser, CommentSection } from './services/markdownParser';
-import { Metadata } from './services/Metadata';
-import { log } from './utils';
-import { SyncStateManager } from './services/syncStateManager';
-import * as fs from 'fs';
 import { ISyncLogManager, SyncLogEntry } from './services/interfaces/ISyncLogManager';
+import { CommentSection, MarkdownParser } from './services/markdownParser';
+import { Metadata } from './services/Metadata';
 import { StateTransformer } from './services/stateTransformer';
+import { SyncStateManager } from './services/syncStateManager';
+import { log } from './utils';
 
 // 私有 symbol 用于存储 provider 引用
 const providerSymbol = Symbol('provider');
@@ -538,30 +538,24 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem> {
             let needsUpdate = false;
             const updates: Partial<Metadata> = {};
 
-            // 如果没有 type，从 ADO 获取
-            if (!metadata.type) {
-                updates.type = workItem.type;
-                needsUpdate = true;
-                this.syncLogManager.addLog(filePath, {
-                    timestamp: Date.now(),
-                    status: 'success',
-                    message: '从 ADO 获取工作项类型',
-                    details: `类型: ${workItem.type}`,
-                    groupId
-                });
-            }
-
-            // 如果没有 title，从 ADO 获取
-            if (!metadata.title) {
-                updates.title = workItem.title;
-                needsUpdate = true;
-                this.syncLogManager.addLog(filePath, {
-                    timestamp: Date.now(),
-                    status: 'success',
-                    message: '从 ADO 获取工作项标题',
-                    details: `标题: ${workItem.title}`,
-                    groupId
-                });
+            const checkMetadataFields: string[] = ['type', 'title', 'parentId'];
+            for (const field of checkMetadataFields) {
+                const fieldValue = metadata[field as keyof Metadata];
+                if (fieldValue === undefined || fieldValue === null || fieldValue === '') {
+                    // @ts-ignore
+                    if (workItem[field] !== undefined) {
+                        // @ts-ignore
+                        updates[field] = workItem[field];
+                        needsUpdate = true;
+                        this.syncLogManager.addLog(filePath, {
+                            timestamp: Date.now(),
+                            status: 'success',
+                            message: '从 ADO 获取工作项类型',
+                            details: `类型: ${workItem.type}`,
+                            groupId
+                        });
+                    }
+                }
             }
 
             // 如果需要更新元数据

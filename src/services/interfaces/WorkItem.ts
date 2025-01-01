@@ -6,4 +6,5 @@ export interface RemoteWorkItem {
     title: string;
     type: WorkItemType;
     state: RemoteWorkItemState;
+    parentId?: string;
 }

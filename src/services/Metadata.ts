@@ -7,6 +7,7 @@ export interface Metadata {
     workitemUrl?: string;
     type: WorkItemType;
     state: LocalWorkItemState;
+    parentId?: string;
 }
 
 export interface MetadataUpdateOptions {

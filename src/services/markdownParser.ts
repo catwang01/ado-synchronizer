@@ -117,6 +117,9 @@ export class MarkdownParser {
                             case 'title':
                                 metadata.title = value;
                                 break;
+                            case 'parentid':
+                                metadata.parentId = value;
+                                break;
                         }
                     }
                 });
@@ -306,7 +309,8 @@ export class MarkdownParser {
         if (metadata.workitemId) lines.push(`workitemId: ${metadata.workitemId}`);
         if (metadata.workitemUrl) lines.push(`workitemUrl: ${metadata.workitemUrl}`);
         if (metadata.type) lines.push(`type: ${metadata.type}`);
-        if (metadata.state) lines.push(`state: ${metadata.state}`);  // 枚举值会自动转换为字符串
+        if (metadata.state) lines.push(`state: ${metadata.state}`);
+        if (metadata.parentId) lines.push(`parentId: ${metadata.parentId}`);
         
         return lines;
     }
