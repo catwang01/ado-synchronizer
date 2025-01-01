@@ -40,27 +40,19 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	WorkitemTreeItem.setAdoConfig(adoOrganization!, adoProject!);
 
-	// 注册欢迎视图
-	context.subscriptions.push(
-		vscode.window.registerWebviewViewProvider(
-			WelcomeViewProvider.viewType,
-			new WelcomeViewProvider(context.extensionUri)
-		)
-	);
-
 	// 注册登录命令
 	let signInCommand = vscode.commands.registerCommand('markdown-ado-sync.signin', async () => {
 		try {
-			const session = await authentication.getSession('microsoft', 
-				['499b84ac-1321-427f-aa17-267ca6975798/user_impersonation'], 
+			const session = await authentication.getSession('microsoft',
+				['499b84ac-1321-427f-aa17-267ca6975798/user_impersonation'],
 				{ createIfNone: true }
 			);
-			
+
 			if (!session) {
 				vscode.window.showErrorMessage('需要 Azure DevOps 授权才能继续使用。');
 				return;
 			}
-			
+
 			adoService.updateToken(session.accessToken);
 			await vscode.commands.executeCommand('setContext', 'markdown-ado-sync:authenticated', true);
 			vscode.window.showInformationMessage('登录成功！');
@@ -75,15 +67,38 @@ export async function activate(context: vscode.ExtensionContext) {
 	} else {
 		await vscode.commands.executeCommand('setContext', 'markdown-ado-sync:authenticated', false);
 	}
+	
+	let workitemProvider: WorkitemProvider;
 
-	// 创建 TreeView Provider
-	const workitemProvider = new WorkitemProvider(
-		adoService, 
-		markdownParser, 
-		syncStateManager,
-		syncLogManager
-	);
-	vscode.window.registerTreeDataProvider('adoWorkitems', workitemProvider);
+	const registerView = () => {
+		// 注册欢迎视图
+		context.subscriptions.push(
+			vscode.window.registerWebviewViewProvider(
+				WelcomeViewProvider.viewType,
+				new WelcomeViewProvider(context.extensionUri)
+			)
+		);
+
+		// 创建 TreeView Provider
+		workitemProvider = new WorkitemProvider(
+			adoService,
+			markdownParser,
+			syncStateManager,
+			syncLogManager
+		);
+
+		// 创建 TreeView
+		const workitemTreeView = vscode.window.createTreeView('adoWorkitems', {
+			treeDataProvider: workitemProvider,
+			showCollapseAll: true,
+			canSelectMany: false
+		});
+
+		// 注册 TreeView
+		context.subscriptions.push(workitemTreeView);
+	}
+
+	registerView();
 
 	let watcher: chokidar.FSWatcher | undefined;
 
@@ -137,6 +152,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.workspace.onDidChangeConfiguration(e => {
 			if (e.affectsConfiguration('markdown-ado-sync.scanPaths')) {
 				startWatcher();
+				registerView();
 			}
 		})
 	);
@@ -160,10 +176,10 @@ export async function activate(context: vscode.ExtensionContext) {
 			const config = vscode.workspace.getConfiguration('markdown-ado-sync');
 			const currentPaths = config.get<string[]>('scanPaths') || [];
 			const newPaths = folders.map(folder => folder.fsPath);
-			
+
 			// 合并路径并去重
 			const uniquePaths = [...new Set([...currentPaths, ...newPaths])];
-			
+
 			await config.update('scanPaths', uniquePaths, vscode.ConfigurationTarget.Global);
 			vscode.window.showInformationMessage(`已添加 ${newPaths.length} 个扫描路径`);
 		}
@@ -204,7 +220,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 
 		const logs = workitemProvider.getLogGroup(filePath, groupId);
-		
+
 		// 创建日志内容
 		const content = logs.map((log: SyncLogEntry) => {
 			const date = new Date(log.timestamp);
@@ -230,11 +246,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// 注册清理函数
 	context.subscriptions.push({
-			dispose: () => {
-				if (watcher) {
-					watcher.close();
-				}
+		dispose: () => {
+			if (watcher) {
+				watcher.close();
 			}
+		}
 	});
 
 	context.subscriptions.push(signInCommand);
@@ -253,7 +269,7 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() { }
 
 function updateConfigurationContext() {
 	const config = vscode.workspace.getConfiguration('markdown-ado-sync');
