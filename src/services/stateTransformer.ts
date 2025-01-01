@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { ProcessType } from './processType';
 import { LocalWorkItemState } from './localWorkItemState';
 import { RemoteWorkItemState } from './interfaces/RemoteWorkItemState';
@@ -45,10 +46,10 @@ export class StateTransformer {
         }
     }
 
-    static processType: ProcessType = ProcessType.BASIC;
-
-    static setProcessType(type: ProcessType) {
-        this.processType = type;
+    static get processType() {
+        const config = vscode.workspace.getConfiguration('markdown-ado-sync');
+        const processType = config.get<string>('processType');
+        return processType as ProcessType;
     }
 
     static toAdoState(localState: LocalWorkItemState, type: string): RemoteWorkItemState {

@@ -115,7 +115,7 @@
         "markdown-ado-sync.processType": {
           "type": "string",
           "enum": ["Agile", "Scrum", "Basic", "CMMI"],
-          "default": "Agile",
+          "default": "Basic",
           "description": "Azure DevOps 流程类型"
         }
       }
