@@ -7,5 +7,11 @@ export enum RemoteWorkItemState {
     IN_PROGRESS = 'In Progress',
     TODO = 'To Do',
     DOING = 'Doing',
-    DONE = 'Done'
+    DONE = 'Done',
+
+    COMPLETED = 'Completed',
+    CUT = 'Cut',
+    COMMITTED = 'Committed',
+    PROPOSED = 'Proposed',
+    STARTED = 'Started'
 }

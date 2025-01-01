@@ -111,6 +111,12 @@
           "type": "string",
           "default": "",
           "description": "Azure DevOps 项目名称"
+        },
+        "markdown-ado-sync.processType": {
+          "type": "string",
+          "enum": ["Agile", "Scrum", "Basic", "CMMI"],
+          "default": "Agile",
+          "description": "Azure DevOps 流程类型"
         }
       }
     },

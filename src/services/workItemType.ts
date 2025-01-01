@@ -4,6 +4,8 @@ export enum WorkItemType {
     ISSUE = 'Issue',
     FEATURE = 'Feature',
     USER_STORY = 'User Story',
+    DELIVERABLE = 'Deliverable',
+    SCENARIO = 'Scenario',
     EPIC = 'Epic'
 }
 
@@ -15,7 +17,9 @@ export class WorkItemTypeHelper {
         WorkItemType.ISSUE,
         WorkItemType.FEATURE,
         WorkItemType.USER_STORY,
-        WorkItemType.EPIC
+        WorkItemType.EPIC,
+        WorkItemType.DELIVERABLE,
+        WorkItemType.SCENARIO
     ];
 
     /**

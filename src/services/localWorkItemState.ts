@@ -2,7 +2,8 @@ export enum LocalWorkItemState {
     COMPLETED = 'Completed',
     PROPOSED = 'Proposed',
     STARTED = 'Started',
-    CUT = 'Cut'
+    CUT = 'Cut',
+    COMMITTED = 'Committed'
 }
 
 export class LocalWorkItemStateHelper {
