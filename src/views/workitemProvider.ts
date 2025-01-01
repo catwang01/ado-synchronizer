@@ -9,7 +9,7 @@ import { SyncStateManager } from '../services/syncStateManager';
 import { log } from '../utils';
 import { WorkitemGroup } from './workitemGroup';
 import { LogEntryGroupTreeItem } from './logEntryGroupTreeItem';
-import { WorkitemTreeItem } from './workitemTreeItem';
+import { TreeItemStatus, WorkitemTreeItem } from './workitemTreeItem';
 
 export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem | undefined> = new vscode.EventEmitter<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem | undefined>();
@@ -34,38 +34,6 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         return this._scanPath;
     }
 
-    private updateItemIcon(filePath: string, status: 'syncing' | 'success' | 'failed' | 'default' | 'skipped') {
-        const item = this.itemMap.get(filePath);
-        if (item) {
-            if (status === 'syncing') {
-                item.syncing = true;
-            } else {
-                item.syncing = false;
-            }
-
-            var iconPath: vscode.ThemeIcon;
-            // 更新图标
-            switch (status) {
-                case 'syncing':
-                    iconPath = new vscode.ThemeIcon('sync~spin');
-                    break;
-                case 'success':
-                    iconPath = new vscode.ThemeIcon('check');
-                    break;
-                case 'failed':
-                    iconPath = new vscode.ThemeIcon('error');
-                    break;
-                default:
-                    iconPath = new vscode.ThemeIcon('circle-outline');
-            }
-            item.update({
-                iconPath: iconPath
-            });
-            // 强制刷新这个项目
-            this._onDidChangeTreeData.fire(item);
-        }
-    }
-
     refresh(filePath?: string): void {
         if (filePath) {
             const item = this.itemMap.get(filePath);
@@ -84,7 +52,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         for (const [filePath] of this.itemMap) {
             if (await this.syncStateManager.needsSync(filePath)) {
                 modifiedItems.push(filePath);
-                this.updateItemIcon(filePath, 'default');
+                this.updateItemStatus(filePath, 'default');
                 // 更新 label 显示修改状态
                 const item = this.itemMap.get(filePath);
                 if (item) {
@@ -101,7 +69,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
     }
 
     refreshToState(filePath: string): void {
-        this.updateItemIcon(filePath, 'default');
+        this.updateItemStatus(filePath, 'default');
         // 更新 label 显示修改状态
         const item = this.itemMap.get(filePath);
         if (item) {
@@ -111,7 +79,6 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
             });
         }
     }
-
 
     getTreeItem(element: WorkitemTreeItem): vscode.TreeItem {
         return element;
@@ -219,7 +186,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
 
             // 设置所有项目为同步中状态
             for (const [filePath] of this.itemMap) {
-                this.updateItemIcon(filePath, 'syncing');
+                this.updateItemStatus(filePath, 'syncing');
             }
 
             // 同步每个工作项
@@ -317,7 +284,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
     async syncSingleWorkitem(filePath: string): Promise<'success' | 'failed' | 'skipped'> {
         const groupId = Date.now().toString();
         try {
-            this.updateItemIcon(filePath, 'syncing');
+            this.updateItemStatus(filePath, 'syncing');
             this.syncLogManager.addLog(filePath, {
                 timestamp: Date.now(),
                 status: 'success',
@@ -335,7 +302,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
                     details: `工作项 ID 缺失`,
                     groupId
                 });
-                this.updateItemIcon(filePath, 'failed');
+                this.updateItemStatus(filePath, 'failed');
                 return 'failed';
             }
 
@@ -381,7 +348,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
                         details: `工作项 ${metadata.workitemId} 状态为 ${metadata.state}, remote state: ${workItem.state}`,
                         groupId
                     });
-                    this.updateItemIcon(filePath, 'success');
+                    this.updateItemStatus(filePath, 'success');
                     return 'skipped';
                 }
             }
@@ -414,7 +381,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
                 groupId
             });
 
-            this.updateItemIcon(filePath, 'success');
+            this.updateItemStatus(filePath, 'success');
             return 'success';
         } catch (error) {
             this.syncLogManager.addLog(filePath, {
@@ -424,8 +391,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
                 details: error instanceof Error ? error.message : String(error),
                 groupId
             });
-
-            this.updateItemIcon(filePath, 'failed');
+            this.updateItemStatus(filePath, 'failed');
             return 'failed';
         }
     }
@@ -462,5 +428,13 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
     // 添加公共方法来检查文件是否有日志
     hasLogs(filePath: string): boolean {
         return this.syncLogManager.getLogs(filePath).length > 0;
+    }
+
+    private updateItemStatus(filePath: string, status: TreeItemStatus): void {
+        const item = this.itemMap.get(filePath);
+        if (item) {
+            item.treeItemStatus = status;
+            this._onDidChangeTreeData.fire(item);
+        }
     }
 }

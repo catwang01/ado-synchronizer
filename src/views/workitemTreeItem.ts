@@ -15,10 +15,13 @@ export type WorkItemUpdate = Partial<{
     iconPath: vscode.ThemeIcon;
 }>;
 
+export type TreeItemStatus = 'syncing' | 'success' | 'failed' | 'default' | 'skipped';
+
 export class WorkitemTreeItem extends vscode.TreeItem {
     private static adoConfig: { organization?: string; project?: string } = {};
     private _syncing: boolean = false;
     private [providerSymbol]: WorkitemProvider;
+    private _treeItemStatus: TreeItemStatus = 'default';
 
     private _workitemId?: string;
     private _workitemUrl?: string;
@@ -34,6 +37,12 @@ export class WorkitemTreeItem extends vscode.TreeItem {
     get syncing(): boolean { return this._syncing; }
     set syncing(value: boolean) {
         this._syncing = value;
+        this.iconPath = this.computeInitialIcon();
+    }
+
+    get treeItemStatus(): TreeItemStatus { return this._treeItemStatus; }
+    set treeItemStatus(value: TreeItemStatus) {
+        this._treeItemStatus = value;
         this.iconPath = this.computeInitialIcon();
     }
 
@@ -106,9 +115,19 @@ export class WorkitemTreeItem extends vscode.TreeItem {
     }
 
     private computeInitialIcon(): vscode.ThemeIcon {
-        if (this._syncing) {
-            return new vscode.ThemeIcon('sync~spin');
+        // 首先检查状态
+        switch (this._treeItemStatus) {
+            case 'syncing':
+                return new vscode.ThemeIcon('sync~spin');
+            case 'success':
+                return new vscode.ThemeIcon('check');
+            case 'failed':
+                return new vscode.ThemeIcon('error');
+            case 'skipped':
+                return new vscode.ThemeIcon('warning');
         }
+
+        // 如果状态是 default，则根据工作项类型显示图标
         if (this.type) {
             switch (this.type as WorkItemType) {
                 case WorkItemType.BUG:
