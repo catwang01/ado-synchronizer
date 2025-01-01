@@ -7,6 +7,7 @@ import { Metadata } from './services/Metadata';
 import { StateTransformer } from './services/stateTransformer';
 import { SyncStateManager } from './services/syncStateManager';
 import { log } from './utils';
+import { WorkitemGroup } from './workitemGroup';
 
 // 私有 symbol 用于存储 provider 引用
 const providerSymbol = Symbol('provider');
@@ -207,18 +208,28 @@ export class WorkitemItem extends vscode.TreeItem {
     }
 }
 
-export class WorkitemProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined> = new vscode.EventEmitter<vscode.TreeItem | undefined>();
-    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined> = this._onDidChangeTreeData.event;
+export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemItem | WorkitemGroup> {
+    private _onDidChangeTreeData: vscode.EventEmitter<WorkitemItem | WorkitemGroup | undefined> = new vscode.EventEmitter<WorkitemItem | WorkitemGroup | undefined>();
+    readonly onDidChangeTreeData: vscode.Event<WorkitemItem | WorkitemGroup | undefined> = this._onDidChangeTreeData.event;
 
     private itemMap: Map<string, WorkitemItem> = new Map();
+    private _scanPath: string | undefined;
 
     constructor(
         private adoService: IAdoService,
         private markdownParser: MarkdownParser,
         private syncStateManager: SyncStateManager,
         private syncLogManager: ISyncLogManager
-    ) { }
+    ) { 
+        this._scanPath = vscode.workspace.getConfiguration('markdown-ado-sync').get<string>('scanPath');
+    }
+
+    get scanPath(): string {
+        if (!this._scanPath) {
+            throw new Error('扫描路径未配置');
+        }
+        return this._scanPath;
+    }
 
     private updateItemIcon(filePath: string, status: 'syncing' | 'success' | 'failed' | 'default' | 'skipped') {
         const item = this.itemMap.get(filePath);
@@ -350,16 +361,85 @@ export class WorkitemProvider implements vscode.TreeDataProvider<vscode.TreeItem
         });
     }
 
-    async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
-        if (!element) {
-            return this.scanWorkItems();
+    private async buildWorkItemGroups(): Promise<WorkitemGroup[]> {
+        const files = await this.markdownParser.scanDirectory(this.scanPath);
+        const workitems = await Promise.all(
+            files.map(async (file: string) => {
+                try {
+                    const metadata = await this.markdownParser.parseMetadata(file);
+                    return { metadata, file };
+                } catch (error) {
+                    return null;
+                }
+            })
+        );
+
+        const validWorkitems = workitems.filter((x): x is NonNullable<typeof x> => x !== null);
+        const groupedByParent = new Map<string | undefined, typeof validWorkitems>();
+
+        validWorkitems.forEach(item => {
+            const parentId = item.metadata.parentId;
+            const group = groupedByParent.get(parentId) || [];
+            group.push(item);
+            groupedByParent.set(parentId, group);
+        });
+
+        const modifiedItems = groupedByParent.get(undefined)?.filter(item => {
+            if (groupedByParent.has(item.metadata.workitemId)) {
+                groupedByParent.get(item.metadata.workitemId)?.push(item);
+                return false;
+            }
+            return true;
+        });
+        if (modifiedItems) {
+            groupedByParent.set(undefined, modifiedItems);
         }
-        if (element instanceof WorkitemItem) {
-            if (element?.filePath && !element.isLogGroup) {
+
+        return Array.from(groupedByParent.entries()).map(([parentId, items]) => {
+            const groupLabel = parentId ? `父工作项 #${parentId}` : '无父工作项';
+            const groupItem = new WorkitemGroup(
+                groupLabel,
+                items.map(item => {
+                    const workItem = new WorkitemItem(
+                        item.metadata.title,
+                        this.syncLogManager,
+                        this,
+                        item.file,
+                        item.metadata.state,
+                        item.metadata.workitemId,
+                        item.metadata.workitemUrl,
+                        item.metadata.type,
+                        false
+                    );
+                    this.itemMap.set(item.file, workItem);
+                    return workItem;
+                }),
+                parentId,
+                vscode.TreeItemCollapsibleState.Collapsed
+            );
+            return groupItem;
+        });
+    }
+
+    async getChildren(element?: WorkitemItem | WorkitemGroup): Promise<WorkitemItem[] | WorkitemGroup[]> {
+        try {
+            if (element instanceof WorkitemItem && element.filePath && !element.isLogGroup) {
                 return this.getLogGroupItems(element);
             }
+
+            if (!element) {
+                return await this.buildWorkItemGroups();
+            }
+
+            if (element instanceof WorkitemGroup) {
+                return element.children;
+            }
+
+            return [];
+        } catch (error) {
+            vscode.window.showErrorMessage(`获取工作项失败: ${error instanceof Error ? error.message : String(error)}`);
+            return [];
         }
-        return [];
     }
 
     async syncWorkitems(): Promise<void> {
@@ -598,51 +678,5 @@ export class WorkitemProvider implements vscode.TreeDataProvider<vscode.TreeItem
     // 添加公共方法来获取日志组
     public getLogGroup(filePath: string, groupId: string): SyncLogEntry[] {
         return this.syncLogManager.getLogGroup(filePath, groupId);
-    }
-
-    private async scanWorkItems(): Promise<WorkitemItem[]> {
-        const config = vscode.workspace.getConfiguration('markdown-ado-sync');
-        const scanPath = config.get<string>('scanPath');
-
-        this.itemMap.clear();
-
-        if (!scanPath) {
-            return [new WorkitemItem(
-                '点击配置扫描路径',
-                this.syncLogManager,
-                this
-            )];
-        }
-
-        try {
-            const files = await this.markdownParser.scanDirectory(scanPath);
-            const workitems = await Promise.all(
-                files.map(async (file: string) => {
-                    try {
-                        const metadata = await this.markdownParser.parseMetadata(file);
-                        const item = new WorkitemItem(
-                            metadata.title,
-                            this.syncLogManager,
-                            this,
-                            file,
-                            metadata.state,
-                            metadata.workitemId,
-                            metadata.workitemUrl,
-                            metadata.type,
-                            false
-                        );
-                        this.itemMap.set(file, item);
-                        return item;
-                    }
-                    catch (error) {
-                        return null;
-                    }
-                })
-            );
-            return workitems.filter(x => x !== null);
-        } catch (error) {
-            vscode.window.showErrorMessage(`获取工作项失败: ${error instanceof Error ? error.message : String(error)}`);
-            return [];
-        }
     }
 }
