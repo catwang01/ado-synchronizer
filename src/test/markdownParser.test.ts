@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { MarkdownParser } from '../services/markdownParser';
-import { WorkitemItem } from '../workitemProvider';
+import { WorkitemItem } from '../views/workitemProvider';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';

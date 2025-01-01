@@ -4,7 +4,7 @@ import MarkdownIt from 'markdown-it';
 import { Metadata } from './Metadata';
 import { LocalWorkItemStateHelper } from './localWorkItemState';
 import { WorkItemTypeHelper } from './workItemType';
-import { WorkitemItem } from '../workitemProvider';
+import { WorkitemItem } from '../views/workitemProvider';
 
 export interface CommentSection {
     id?: string;  // ADO comment ID

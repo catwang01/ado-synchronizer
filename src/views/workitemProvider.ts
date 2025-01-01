@@ -1,12 +1,12 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { IAdoService } from './services/adoService';
-import { ISyncLogManager, SyncLogEntry } from './services/interfaces/ISyncLogManager';
-import { CommentSection, MarkdownParser } from './services/markdownParser';
-import { Metadata } from './services/Metadata';
-import { StateTransformer } from './services/stateTransformer';
-import { SyncStateManager } from './services/syncStateManager';
-import { log } from './utils';
+import { IAdoService } from '../services/adoService';
+import { ISyncLogManager, SyncLogEntry } from '../services/interfaces/ISyncLogManager';
+import { CommentSection, MarkdownParser } from '../services/markdownParser';
+import { Metadata } from '../services/Metadata';
+import { StateTransformer } from '../services/stateTransformer';
+import { SyncStateManager } from '../services/syncStateManager';
+import { log } from '../utils';
 import { WorkitemGroup } from './workitemGroup';
 import { LogEntryGroupTreeItem } from './logEntryGroupTreeItem';
 

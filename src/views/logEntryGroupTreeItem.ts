@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SyncLogEntry } from './services/interfaces/ISyncLogManager';
+import { SyncLogEntry } from '../services/interfaces/ISyncLogManager';
 
 export class LogEntryGroupTreeItem extends vscode.TreeItem {
     constructor(

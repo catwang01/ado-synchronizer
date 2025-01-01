@@ -1,7 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { WorkitemProvider, WorkitemItem } from './workitemProvider';
+import { WorkitemProvider, WorkitemItem } from './views/workitemProvider';
 import { AdoService } from './services/adoService';
 import { MarkdownParser } from './services/markdownParser';
 import * as chokidar from 'chokidar';
@@ -9,7 +9,7 @@ import { log } from './utils';
 import { SyncStateManager } from './services/syncStateManager';
 import { authentication } from 'vscode';
 import { SyncLogManager } from './services/implementations/syncLogManager';
-import { WelcomeViewProvider } from './welcomeViewProvider';
+import { WelcomeViewProvider } from './views/welcomeViewProvider';
 import { assert } from 'console';
 
 // This method is called when your extension is activated
