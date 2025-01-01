@@ -94,6 +94,32 @@ export async function activate(context: vscode.ExtensionContext) {
 			canSelectMany: false
 		});
 
+		// 添加状态过滤命令
+		const filterCommand = vscode.commands.registerCommand('markdown-ado-sync.filterByState', async () => {
+			const states = [
+				{ label: 'All', state: undefined },
+				{ label: 'Completed', state: 'Completed' },
+				{ label: 'Started', state: 'Started' },
+				{ label: 'Proposed', state: 'Proposed' },
+				{ label: 'Committed', state: 'Committed' },
+				{ label: 'Cut', state: 'Cut' }
+			];
+
+			const selected = await vscode.window.showQuickPick(states.map(s => s.label), {
+				placeHolder: '选择状态过滤'
+			});
+
+			if (selected) {
+				const state = states.find(s => s.label === selected)?.state;
+				workitemProvider.setStateFilter(state);
+			}
+		});
+
+		context.subscriptions.push(filterCommand);
+
+		// 添加过滤按钮到视图标题栏
+		vscode.commands.executeCommand('setContext', 'markdown-ado-sync:showFilterButton', true);
+
 		// 注册 TreeView
 		context.subscriptions.push(workitemTreeView);
 	}

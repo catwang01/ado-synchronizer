@@ -17,6 +17,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
 
     private itemMap: Map<string, WorkitemTreeItem> = new Map();
     private _scanPaths: string[] = [];
+    private _stateFilter: string | undefined;
 
     constructor(
         private adoService: IAdoService,
@@ -130,7 +131,10 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
             })
         );
 
-        const validWorkitems = workitems.filter((x): x is NonNullable<typeof x> => x !== null);
+        const validWorkitems = workitems
+            .filter((x): x is NonNullable<typeof x> => x !== null)
+            .filter(item => !this._stateFilter || item.metadata.state === this._stateFilter);
+
         const groupedByParent = new Map<string | undefined, WorkitemTreeItem[]>();
 
         validWorkitems.forEach(item => {
@@ -444,5 +448,11 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
             item.treeItemStatus = status;
             this._onDidChangeTreeData.fire(item);
         }
+    }
+
+    // 添加状态过滤方法
+    setStateFilter(state: string | undefined) {
+        this._stateFilter = state;
+        this.refresh();
     }
 }

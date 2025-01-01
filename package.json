@@ -35,6 +35,11 @@
       {
         "command": "markdown-ado-sync.showLogs",
         "title": "显示同步日志"
+      },
+      {
+        "command": "markdown-ado-sync.filterByState",
+        "title": "按状态过滤",
+        "icon": "$(filter)"
       }
     ],
     "menus": {
@@ -47,6 +52,11 @@
         {
           "command": "markdown-ado-sync.sync",
           "when": "view == adoWorkitems",
+          "group": "navigation"
+        },
+        {
+          "command": "markdown-ado-sync.filterByState",
+          "when": "view == adoWorkitems && markdown-ado-sync:showFilterButton",
           "group": "navigation"
         }
       ],
