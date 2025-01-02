@@ -260,12 +260,13 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         for (let i = 0; i < minLength; i++) {
             const existingComment = existingComments[i];
             const fileComment = fileComments[i];
-            await this.adoService.updateComment(workItemId, existingComment.id, fileComment.text);
+            const htmlContent = this.markdownParser.convertToHtml(fileComment.text);
+            await this.adoService.updateComment(workItemId, existingComment.id, htmlContent);
             this.syncLogManager.addLog(filePath, {
                 timestamp: Date.now(),
                 status: 'success',
                 message: '更新评论',
-                details: `更新评论: from ${existingComment.text.substring(0, 50)} to ${fileComment.text.substring(0, 50)}...`,
+                details: `更新评论: from ${existingComment.text.substring(0, 50)} to ${htmlContent.substring(0, 50)}...`,
                 groupId
             });
         }
@@ -285,32 +286,13 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         if (fileComments.length > existingComments.length) {
             // 添加新的评论
             for (const comment of fileComments.slice(existingComments.length)) {
-                await this.adoService.addComment(workItemId, comment.text);
+                const htmlContent = this.markdownParser.convertToHtml(comment.text);
+                await this.adoService.addComment(workItemId, htmlContent);
                 this.syncLogManager.addLog(filePath, {
                     timestamp: Date.now(),
                     status: 'success',
                     message: '添加评论',
-                    details: `新评论: ${comment.text.substring(0, 50)}...`,
-                    groupId
-                });
-            }
-        }
-
-        // 处理新增的评论
-        for (const comment of fileComments) {
-            if (!comment.id) {
-                // 新评论
-                const commentId = await this.adoService.addComment(workItemId, comment.text);
-                // 更新文件中的评论ID
-                const index = fileComments.indexOf(comment);
-                const updatedContent = await this.markdownParser.updateCommentId(content, index, commentId);
-                await fs.promises.writeFile(filePath, updatedContent, 'utf-8');
-
-                this.syncLogManager.addLog(filePath, {
-                    timestamp: Date.now(),
-                    status: 'success',
-                    message: '添加评论',
-                    details: `新评论: ${comment.text.substring(0, 50)}...`,
+                    details: `新评论: ${htmlContent.substring(0, 50)}...`,
                     groupId
                 });
             }

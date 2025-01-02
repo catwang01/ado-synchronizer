@@ -25,7 +25,12 @@ export class MarkdownParser {
     private md: MarkdownIt;
 
     constructor() {
-        this.md = new MarkdownIt();
+        this.md = new MarkdownIt({
+            html: true,        // 启用 HTML 标签
+            breaks: true,      // 转换换行符为 <br>
+            linkify: true,     // 自动转换 URL 为链接
+            typographer: true  // 启用一些语言中性的替换和引号
+        });
     }
 
     private parseWorkItemIdFromUrl(url: string): string | undefined {
@@ -348,5 +353,13 @@ export class MarkdownParser {
             '---',
             '',
         ].join('\n');
+    }
+
+    // 添加一个辅助方法来转换评论内容
+    convertToHtml(markdown: string): string {
+        return this.md.render(markdown)
+            .trim()
+            .replace(/(<p>|<\/p>)/g, '')
+            .replace(/\n{3,}/g, '\n\n');
     }
 } 
