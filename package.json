@@ -130,6 +130,11 @@
           "enum": ["Agile", "Scrum", "Basic", "CMMI"],
           "default": "Basic",
           "description": "Azure DevOps 流程类型"
+        },
+        "markdown-ado-sync.resourceRoot": {
+          "type": "string",
+          "default": "",
+          "description": "资源文件的根目录路径。如果设置，Markdown 中的所有资源路径都将基于此目录"
         }
       }
     },

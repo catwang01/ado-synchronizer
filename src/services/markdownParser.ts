@@ -8,6 +8,7 @@ import { WorkitemTreeItem } from '../views/workitemTreeItem';
 import { IAdoService } from './interfaces/IAdoService';
 import { IFileUploadCache } from './interfaces/IFileUploadCache';
 import { ISyncLogManager } from './interfaces/ISyncLogManager';
+import * as vscode from 'vscode';
 
 export interface CommentSection {
     id?: string;  // ADO comment ID
@@ -38,14 +39,36 @@ export class MarkdownParser {
         });
     }
 
+    private get resourceRoot(): string {
+        return vscode.workspace.getConfiguration('markdown-ado-sync').get<string>('resourceRoot') || '';
+    }
+
+    private getAbsolutePath(relativePath: string, markdownFilePath?: string): string {
+        // 如果设置了资源根目录，基于资源根目录解析
+        if (this.resourceRoot) {
+            return path.resolve(this.resourceRoot, relativePath.replace(/^\/+/, ''));
+        }
+
+        if (path.isAbsolute(relativePath)) {
+            return relativePath;
+        }
+
+        // 如果提供了 markdown 文件路径，基于它解析相对路径
+        if (markdownFilePath) {
+            return path.resolve(path.dirname(markdownFilePath), relativePath);
+        }
+
+        return relativePath;
+    }
+
     // 处理本地文件引用
     async processLocalFiles(
         markdown: string, 
         adoService: IAdoService, 
         workItemId: string,
-        filePath?: string,  // 添加文件路径参数
-        groupId?: string,   // 添加日志组ID参数
-        syncLogManager?: ISyncLogManager  // 添加日志管理器参数
+        filePath?: string,
+        groupId?: string,
+        syncLogManager?: ISyncLogManager
     ): Promise<string> {
         const localFilePattern = /!\[([^\]]*)\]\(([^)]+)\)|<img[^>]+src="([^"]+)"[^>]*>/g;
         let result = markdown;
@@ -54,46 +77,45 @@ export class MarkdownParser {
         while ((match = localFilePattern.exec(markdown)) !== null) {
             const attachmentPath = match[2] || match[3];
             if (attachmentPath && this.isLocalFile(attachmentPath)) {
+                // 获取绝对路径
+                const absolutePath = this.getAbsolutePath(attachmentPath, filePath);
+                
                 // 检查文件是否已上传
-                let adoUrl = this.fileUploadCache.getUploadedUrl(attachmentPath);
+                let adoUrl = this.fileUploadCache.getUploadedUrl(absolutePath);
                 if (!adoUrl) {
                     try {
-                        // 记录开始上传
                         if (syncLogManager && filePath && groupId) {
                             syncLogManager.addLog(filePath, {
                                 timestamp: Date.now(),
                                 status: 'success',
                                 message: '开始上传附件',
-                                details: `正在上传文件: ${attachmentPath}`,
+                                details: `正在上传文件: ${absolutePath}`,
                                 groupId
                             });
                         }
 
-                        // 上传文件
-                        adoUrl = await adoService.uploadAttachment(workItemId, attachmentPath);
+                        adoUrl = await adoService.uploadAttachment(workItemId, absolutePath);
                         
                         if (adoUrl) {
-                            await this.fileUploadCache.setUploadedUrl(attachmentPath, adoUrl);
-                            // 记录上传成功
+                            await this.fileUploadCache.setUploadedUrl(absolutePath, adoUrl);
                             if (syncLogManager && filePath && groupId) {
                                 syncLogManager.addLog(filePath, {
                                     timestamp: Date.now(),
                                     status: 'success',
                                     message: '附件上传成功',
-                                    details: `文件 ${attachmentPath} 已上传到 ${adoUrl}`,
+                                    details: `文件 ${absolutePath} 已上传到 ${adoUrl}`,
                                     groupId
                                 });
                             }
                         }
                     } catch (error) {
-                        console.error(`Failed to upload file ${attachmentPath}:`, error);
-                        // 记录上传失败
+                        console.error(`Failed to upload file ${absolutePath}:`, error);
                         if (syncLogManager && filePath && groupId) {
                             syncLogManager.addLog(filePath, {
                                 timestamp: Date.now(),
                                 status: 'failed',
                                 message: '附件上传失败',
-                                details: `文件 ${attachmentPath} 上传失败: ${error instanceof Error ? error.message : String(error)}`,
+                                details: `文件 ${absolutePath} 上传失败: ${error instanceof Error ? error.message : String(error)}`,
                                 groupId
                             });
                         }
@@ -102,7 +124,6 @@ export class MarkdownParser {
                 }
 
                 if (adoUrl) {
-                    // 替换本地路径为 ADO URL
                     if (match[2]) {
                         result = result.replace(
                             `![${match[1]}](${attachmentPath})`,
