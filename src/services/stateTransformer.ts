@@ -22,11 +22,11 @@ export class StateTransformer {
                 return baseRules;
             case ProcessType.SCRUM:
                 return [
-                    { localState: LocalWorkItemState.PROPOSED, adoState: RemoteWorkItemState.NEW },
+                    { localState: LocalWorkItemState.PROPOSED, adoState: RemoteWorkItemState.PROPOSED },
                     { localState: LocalWorkItemState.COMMITTED, adoState: RemoteWorkItemState.COMMITTED },
-                    { localState: LocalWorkItemState.STARTED, adoState: RemoteWorkItemState.ACTIVE },
-                    { localState: LocalWorkItemState.COMPLETED, adoState: RemoteWorkItemState.DONE },
-                    { localState: LocalWorkItemState.CUT, adoState: RemoteWorkItemState.REMOVED }
+                    { localState: LocalWorkItemState.STARTED, adoState: RemoteWorkItemState.STARTED },
+                    { localState: LocalWorkItemState.COMPLETED, adoState: RemoteWorkItemState.COMPLETED },
+                    { localState: LocalWorkItemState.CUT, adoState: RemoteWorkItemState.CUT }
                 ];
             case ProcessType.BASIC:
                 return [
