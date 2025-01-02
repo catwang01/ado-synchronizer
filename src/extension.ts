@@ -97,22 +97,31 @@ export async function activate(context: vscode.ExtensionContext) {
 		// 添加状态过滤命令
 		const filterCommand = vscode.commands.registerCommand('markdown-ado-sync.filterByState', async () => {
 			const states = [
-				{ label: 'All', state: undefined },
-				{ label: 'Completed', state: 'Completed' },
-				{ label: 'Started', state: 'Started' },
-				{ label: 'Proposed', state: 'Proposed' },
-				{ label: 'Committed', state: 'Committed' },
-				{ label: 'Cut', state: 'Cut' },
-				{ label: 'Dummy', state: 'Dummy' }
+				{ label: 'All', state: undefined, picked: false },
+				{ label: 'Completed', state: 'Completed', picked: false },
+				{ label: 'Started', state: 'Started', picked: true },
+				{ label: 'Proposed', state: 'Proposed', picked: true },
+				{ label: 'Committed', state: 'Committed', picked: true },
+				{ label: 'Cut', state: 'Cut', picked: false },
+				{ label: 'Dummy', state: 'Dummy', picked: true }
 			];
 
-			const selected = await vscode.window.showQuickPick(states.map(s => s.label), {
-				placeHolder: '选择状态过滤'
+			const selected = await vscode.window.showQuickPick(states.map(s => ({
+				label: s.label,
+				picked: s.picked,
+				state: s.state
+			})), {
+				placeHolder: '选择状态过滤',
+				canPickMany: true
 			});
 
 			if (selected) {
-				const state = states.find(s => s.label === selected)?.state;
-				workitemProvider.setStateFilter(state);
+				if (selected.some(s => s.label === 'All')) {
+					workitemProvider.setStateFilters(undefined);
+				} else {
+					const selectedStates = selected.map(s => s.state).filter((s): s is string => s !== undefined);
+					workitemProvider.setStateFilters(selectedStates);
+				}
 			}
 		});
 

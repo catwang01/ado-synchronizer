@@ -18,7 +18,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
 
     private itemMap: Map<string, WorkitemTreeItem> = new Map();
     private _scanPaths: string[] = [];
-    private _stateFilter: string | undefined;
+    private _stateFilters: Set<string> = new Set();
 
     constructor(
         private adoService: IAdoService,
@@ -27,6 +27,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         private syncLogManager: ISyncLogManager
     ) {
         this._scanPaths = vscode.workspace.getConfiguration('markdown-ado-sync').get<string[]>('scanPaths') || [];
+        this._stateFilters = new Set(['Started', 'Proposed', 'Committed', 'Dummy']);
     }
 
     get scanPaths(): string[] {
@@ -134,12 +135,11 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
 
         const validWorkitems = workitems
             .filter((x): x is NonNullable<typeof x> => x !== null)
-            .filter(item => !this._stateFilter || item.metadata.state === this._stateFilter)
+            .filter(item => this._stateFilters.size === 0 || this._stateFilters.has(item.metadata.state))
             .sort((a, b) => {
-                // 将 ID 转换为数字进行比较，如果无法转换则放到最后
                 const idA = parseInt(a.metadata.workitemId || '0', 10);
                 const idB = parseInt(b.metadata.workitemId || '0', 10);
-                return idB - idA; // 降序排列
+                return idB - idA;
             });
 
         const groupedByParent = new Map<string | undefined, WorkitemTreeItem[]>();
@@ -455,7 +455,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         }
     }
 
-    // 添加公共方法来获取日志组
+    // 添加公共方法来获取日志
     public getLogGroup(filePath: string, groupId: string): SyncLogEntry[] {
         return this.syncLogManager.getLogGroup(filePath, groupId);
     }
@@ -489,9 +489,9 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         }
     }
 
-    // 添加状态过滤方法
-    setStateFilter(state: string | undefined) {
-        this._stateFilter = state;
+    // 修改过滤方法
+    setStateFilters(states: string[] | undefined) {
+        this._stateFilters = new Set(states);
         this.refresh();
     }
 }
