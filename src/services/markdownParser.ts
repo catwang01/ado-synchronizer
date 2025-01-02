@@ -32,14 +32,26 @@ export class MarkdownParser {
         try {
             // 检查是否是 dummy URL
             if (url.toLowerCase().includes('dummy')) {
-                return 'dummy-' + Math.random().toString(36).substring(2, 8);  // 生成随机 ID
+                return 'dummy-' + Math.random().toString(36).substring(2, 8);
             }
 
-            // 正常的 URL 解析
-            const match = url.match(/_workitems\/edit\/(\d+)/);
-            if (match) {
-                return match[1];
+            // 尝试从不同格式的 URL 中解析 ID
+            const patterns = [
+                // 标准格式: /_workitems/edit/123
+                /_workitems\/edit\/(\d+)/,
+                // 查询参数格式: ?workitemId=123 或 ?id=123
+                /[?&](workitem|id)=(\d+)/i,
+                // 其他可能的格式...
+            ];
+
+            for (const pattern of patterns) {
+                const match = url.match(pattern);
+                if (match) {
+                    // 如果是查询参数格式，ID 在第二个捕获组
+                    return match[match.length - 1];
+                }
             }
+
             return undefined;
         } catch {
             return undefined;
