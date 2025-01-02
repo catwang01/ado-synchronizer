@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { WorkItemType } from '../services/workItemType';
 import { WorkitemProvider } from './workitemProvider';
+import { LocalWorkItemStateHelper } from '../services/localWorkItemState';
 
 // 私有 symbol 用于存储 provider 引用
 const providerSymbol = Symbol('provider');

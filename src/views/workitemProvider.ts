@@ -10,6 +10,7 @@ import { log } from '../utils';
 import { WorkitemGroup } from './workitemGroup';
 import { LogEntryGroupTreeItem } from './logEntryGroupTreeItem';
 import { TreeItemStatus, WorkitemTreeItem } from './workitemTreeItem';
+import { LocalWorkItemStateHelper } from '../services/localWorkItemState';
 
 export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem | undefined> = new vscode.EventEmitter<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem | undefined>();
@@ -296,6 +297,22 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
     async syncSingleWorkitem(filePath: string): Promise<'success' | 'failed' | 'skipped'> {
         const groupId = Date.now().toString();
         try {
+            // 检查是否为 Dummy 状态
+            const content = await fs.promises.readFile(filePath, 'utf-8');
+            let { metadata } = this.markdownParser.parseContent(content);
+            
+            if (LocalWorkItemStateHelper.isDummyState(metadata.state)) {
+                this.syncLogManager.addLog(filePath, {
+                    timestamp: Date.now(),
+                    status: 'skipped',
+                    message: '跳过 Dummy 状态的工作项',
+                    details: `工作项状态为 Dummy，不进行同步`,
+                    groupId
+                });
+                this.updateItemStatus(filePath, 'skipped');
+                return 'skipped';
+            }
+
             this.updateItemStatus(filePath, 'syncing');
             this.syncLogManager.addLog(filePath, {
                 timestamp: Date.now(),
@@ -304,8 +321,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
                 groupId
             });
 
-            const content = await fs.promises.readFile(filePath, 'utf-8');
-            let { metadata, description, comments } = this.markdownParser.parseContent(content);
+            const { description, comments } = this.markdownParser.parseContent(content);
             if (metadata.workitemId === undefined || metadata.workitemId === null || metadata.workitemId === '') {
                 this.syncLogManager.addLog(filePath, {
                     timestamp: Date.now(),

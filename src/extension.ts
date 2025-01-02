@@ -102,7 +102,8 @@ export async function activate(context: vscode.ExtensionContext) {
 				{ label: 'Started', state: 'Started' },
 				{ label: 'Proposed', state: 'Proposed' },
 				{ label: 'Committed', state: 'Committed' },
-				{ label: 'Cut', state: 'Cut' }
+				{ label: 'Cut', state: 'Cut' },
+				{ label: 'Dummy', state: 'Dummy' }
 			];
 
 			const selected = await vscode.window.showQuickPick(states.map(s => s.label), {

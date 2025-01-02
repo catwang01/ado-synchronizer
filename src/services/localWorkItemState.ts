@@ -3,7 +3,8 @@ export enum LocalWorkItemState {
     PROPOSED = 'Proposed',
     STARTED = 'Started',
     CUT = 'Cut',
-    COMMITTED = 'Committed'
+    COMMITTED = 'Committed',
+    DUMMY = 'Dummy'
 }
 
 export class LocalWorkItemStateHelper {
@@ -14,5 +15,9 @@ export class LocalWorkItemStateHelper {
             throw new Error(`Invalid state: ${state}`);
         }
         return foundState;
+    }
+
+    static isDummyState(state: LocalWorkItemState): boolean {
+        return state === LocalWorkItemState.DUMMY;
     }
 }
