@@ -25,7 +25,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         private markdownParser: MarkdownParser,
         private syncStateManager: SyncStateManager,
         private syncLogManager: ISyncLogManager
-    ) { 
+    ) {
         this._scanPaths = vscode.workspace.getConfiguration('markdown-ado-sync').get<string[]>('scanPaths') || [];
     }
 
@@ -134,7 +134,13 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
 
         const validWorkitems = workitems
             .filter((x): x is NonNullable<typeof x> => x !== null)
-            .filter(item => !this._stateFilter || item.metadata.state === this._stateFilter);
+            .filter(item => !this._stateFilter || item.metadata.state === this._stateFilter)
+            .sort((a, b) => {
+                // 将 ID 转换为数字进行比较，如果无法转换则放到最后
+                const idA = parseInt(a.metadata.workitemId || '0', 10);
+                const idB = parseInt(b.metadata.workitemId || '0', 10);
+                return idB - idA; // 降序排列
+            });
 
         const groupedByParent = new Map<string | undefined, WorkitemTreeItem[]>();
 
@@ -145,7 +151,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
             this.itemMap.set(item.file, item.workItem);
             groupedByParent.set(parentId, group);
         });
-        
+
         const modifiedItems = groupedByParent.get(undefined)?.filter(item => {
             if (groupedByParent.has(item.workitemId)) {
                 groupedByParent.get(item.workitemId)?.push(item);
@@ -157,14 +163,31 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
             groupedByParent.set(undefined, modifiedItems);
         }
 
-        return Array.from(groupedByParent.entries()).map(([parentId, items]) => {
-            const label = parentId ? `父工作项 #${parentId}` : '无父工作项';
-            return new WorkitemGroup(
-                label,
-                items,
-                parentId
-            );
-        });
+        // 对每个组内的工作项也进行排序
+        for (const [parentId, items] of groupedByParent) {
+            items.sort((a, b) => {
+                const idA = parseInt(a.workitemId || '0', 10);
+                const idB = parseInt(b.workitemId || '0', 10);
+                return idB - idA; // 降序排列
+            });
+            groupedByParent.set(parentId, items);
+        }
+
+        // 对组也按照 parentId 排序
+        return Array.from(groupedByParent.entries())
+            .sort(([parentIdA], [parentIdB]) => {
+                const idA = parseInt(parentIdA || '0', 10);
+                const idB = parseInt(parentIdB || '0', 10);
+                return idB - idA; // 降序排列
+            })
+            .map(([parentId, items]) => {
+                const label = parentId ? `父工作项 #${parentId}` : '无父工作项';
+                return new WorkitemGroup(
+                    label,
+                    items,
+                    parentId
+                );
+            });
     }
 
     async getChildren(element?: WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem): Promise<(WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem)[]> {
@@ -300,7 +323,7 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
             // 检查是否为 Dummy 状态
             const content = await fs.promises.readFile(filePath, 'utf-8');
             let { metadata } = this.markdownParser.parseContent(content);
-            
+
             if (LocalWorkItemStateHelper.isDummyState(metadata.state)) {
                 this.syncLogManager.addLog(filePath, {
                     timestamp: Date.now(),
