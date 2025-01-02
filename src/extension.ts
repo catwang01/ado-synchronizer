@@ -26,7 +26,6 @@ interface LogMessage {
 export async function activate(context: vscode.ExtensionContext) {
 	// 检查配置
 	const config = vscode.workspace.getConfiguration('markdown-ado-sync');
-	const scanPaths = config.get<string[]>('scanPaths') || [];
 	const adoToken = config.get<string>('adoToken');
 	const adoOrganization = config.get<string>('adoOrganization');
 	const adoProject = config.get<string>('adoProject');

@@ -9,7 +9,7 @@ import * as path from 'path';
 import FormData from 'form-data';
 
 export class RealAdoService implements IAdoService {
-    private token: string;
+    private token: string = '';
     private organization: string;
     private project: string;
     private client: any;
@@ -19,7 +19,6 @@ export class RealAdoService implements IAdoService {
     }
 
     constructor() {
-        this.token = this.config.get<string>('adoToken') || '';
         this.organization = this.config.get<string>('adoOrganization') || '';
         this.project = this.config.get<string>('adoProject') || '';
         this.updateClient();

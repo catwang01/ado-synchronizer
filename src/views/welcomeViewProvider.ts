@@ -31,6 +31,20 @@ export class WelcomeViewProvider implements vscode.WebviewViewProvider {
                 case 'configureScanPath':
                     await vscode.commands.executeCommand('markdown-ado-sync.configureScanPath');
                     break;
+                case 'configureResourceRoot':
+                    const folder = await vscode.window.showOpenDialog({
+                        canSelectFiles: false,
+                        canSelectFolders: true,
+                        canSelectMany: false,
+                        openLabel: '选择资源根目录',
+                        title: '选择资源文件的根目录'
+                    });
+                    if (folder && folder[0]) {
+                        const config = vscode.workspace.getConfiguration('markdown-ado-sync');
+                        await config.update('resourceRoot', folder[0].fsPath, vscode.ConfigurationTarget.Global);
+                        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+                    }
+                    break;
             }
         });
 
@@ -47,6 +61,7 @@ export class WelcomeViewProvider implements vscode.WebviewViewProvider {
         const organization = config.get<string>('adoOrganization');
         const project = config.get<string>('adoProject');
         const scanPaths = config.get<string[]>('scanPaths') || [];
+        const resourceRoot = config.get<string>('resourceRoot');
 
         const configStatus = {
             organization: !!organization,
@@ -102,43 +117,98 @@ export class WelcomeViewProvider implements vscode.WebviewViewProvider {
                     font-size: 0.9em;
                     color: var(--vscode-descriptionForeground);
                 }
+                .optional-config {
+                    margin-top: 20px;
+                    padding-top: 20px;
+                    border-top: 1px solid var(--vscode-panel-border);
+                }
+                .config-value {
+                    font-size: 0.9em;
+                    color: var(--vscode-descriptionForeground);
+                    margin-left: 24px;
+                    margin-top: 4px;
+                    word-break: break-all;
+                }
+                .config-section {
+                    margin-bottom: 16px;
+                }
             </style>
         </head>
         <body>
-            <h2>配置检查</h2>
-            <div class="config-item">
-                <div class="config-left">
-                    <span class="status-icon ${configStatus.organization ? 'success' : 'error'}">
-                        ${configStatus.organization ? '✓' : '✗'}
-                    </span>
-                    <span>Azure DevOps 组织</span>
+            <h2>必要配置</h2>
+            <div class="config-section">
+                <div class="config-item">
+                    <div class="config-left">
+                        <span class="status-icon ${configStatus.organization ? 'success' : 'error'}">
+                            ${configStatus.organization ? '✓' : '✗'}
+                        </span>
+                        <span>Azure DevOps 组织</span>
+                    </div>
+                    <button onclick="configureSettings()">配置</button>
+                </div>
+                ${organization ? `
+                    <div class="config-value">
+                        当前组织：${organization}
+                    </div>
+                ` : ''}
+            </div>
+
+            <div class="config-section">
+                <div class="config-item">
+                    <div class="config-left">
+                        <span class="status-icon ${configStatus.project ? 'success' : 'error'}">
+                            ${configStatus.project ? '✓' : '✗'}
+                        </span>
+                        <span>Azure DevOps 项目</span>
+                    </div>
+                    <button onclick="configureSettings()">配置</button>
+                </div>
+                ${project ? `
+                    <div class="config-value">
+                        当前项目：${project}
+                    </div>
+                ` : ''}
+            </div>
+
+            <div class="config-section">
+                <div class="config-item">
+                    <div class="config-left">
+                        <span class="status-icon ${configStatus.scanPath ? 'success' : 'error'}">
+                            ${configStatus.scanPath ? '✓' : '✗'}
+                        </span>
+                        <span>扫描路径</span>
+                    </div>
+                    <button onclick="configureScanPath()">选择路径</button>
+                </div>
+                ${scanPaths.length > 0 ? `
+                    <div class="config-value">
+                        当前路径：
+                        <ul style="margin: 4px 0; padding-left: 20px;">
+                            ${scanPaths.map(path => `<li>${path}</li>`).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+            </div>
+
+            <div class="optional-config">
+                <h2>可选配置</h2>
+                <div class="config-section">
+                    <div class="config-item">
+                        <div class="config-left">
+                            <span class="status-icon ${resourceRoot ? 'success' : ''}">
+                                ${resourceRoot ? '✓' : '○'}
+                            </span>
+                            <span>资源根目录</span>
+                        </div>
+                        <button onclick="configureResourceRoot()">选择目录</button>
+                    </div>
+                    ${resourceRoot ? `
+                        <div class="config-value">
+                            当前路径：${resourceRoot}
+                        </div>
+                    ` : ''}
                 </div>
             </div>
-            <div class="config-item">
-                <div class="config-left">
-                    <span class="status-icon ${configStatus.project ? 'success' : 'error'}">
-                        ${configStatus.project ? '✓' : '✗'}
-                    </span>
-                    <span>Azure DevOps 项目</span>
-                </div>
-            </div>
-            <div class="config-item">
-                <div class="config-left">
-                    <span class="status-icon ${configStatus.scanPath ? 'success' : 'error'}">
-                        ${configStatus.scanPath ? '✓' : '✗'}
-                    </span>
-                    <span>扫描路径</span>
-                </div>
-                <button onclick="configureScanPath()">选择路径</button>
-            </div>
-            ${scanPaths.length > 0 ? `
-                <div class="scan-paths">
-                    当前路径：
-                    <ul>
-                        ${scanPaths.map(path => `<li>${path}</li>`).join('')}
-                    </ul>
-                </div>
-            ` : ''}
 
             ${!allConfigured ? `
                 <div style="margin: 20px 0;">
@@ -165,6 +235,10 @@ export class WelcomeViewProvider implements vscode.WebviewViewProvider {
 
                 function configureScanPath() {
                     vscode.postMessage({ type: 'configureScanPath' });
+                }
+
+                function configureResourceRoot() {
+                    vscode.postMessage({ type: 'configureResourceRoot' });
                 }
             </script>
         </body>

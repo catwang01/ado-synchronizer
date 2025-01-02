@@ -110,11 +110,6 @@
           "default": true,
           "description": "启用调试模式，显示更多日志信息"
         },
-        "markdown-ado-sync.adoToken": {
-          "type": "string",
-          "default": "",
-          "description": "Azure DevOps Personal Access Token"
-        },
         "markdown-ado-sync.adoOrganization": {
           "type": "string",
           "default": "",
