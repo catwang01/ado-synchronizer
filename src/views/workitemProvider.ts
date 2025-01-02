@@ -320,11 +320,11 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
     async syncSingleWorkitem(filePath: string): Promise<'success' | 'failed' | 'skipped'> {
         const groupId = Date.now().toString();
         try {
-            // 检查是否为 Dummy 状态
             const content = await fs.promises.readFile(filePath, 'utf-8');
             let { metadata } = this.markdownParser.parseContent(content);
 
-            if (LocalWorkItemStateHelper.isDummyState(metadata.state)) {
+            // 静默跳过，不显示任何提示或改变状态
+            if (LocalWorkItemStateHelper.isDummyState(metadata.state) || metadata.workitemId?.startsWith('dummy-')) {
                 this.syncLogManager.addLog(filePath, {
                     timestamp: Date.now(),
                     status: 'skipped',

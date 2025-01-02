@@ -2,7 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import MarkdownIt from 'markdown-it';
 import { Metadata } from './Metadata';
-import { LocalWorkItemStateHelper } from './localWorkItemState';
+import { LocalWorkItemState, LocalWorkItemStateHelper } from './localWorkItemState';
 import { WorkItemTypeHelper } from './workItemType';
 import { WorkitemTreeItem } from '../views/workitemTreeItem';
 
@@ -30,8 +30,12 @@ export class MarkdownParser {
 
     private parseWorkItemIdFromUrl(url: string): string | undefined {
         try {
-            // 尝试从 URL 中解析 ID
-            // 例如: https://dev.azure.com/org/project/_workitems/edit/123
+            // 检查是否是 dummy URL
+            if (url.toLowerCase().includes('dummy')) {
+                return 'dummy-' + Math.random().toString(36).substring(2, 8);  // 生成随机 ID
+            }
+
+            // 正常的 URL 解析
             const match = url.match(/_workitems\/edit\/(\d+)/);
             if (match) {
                 return match[1];
@@ -137,15 +141,17 @@ export class MarkdownParser {
     }
 
     private processWorkItemUrls(metadata: Metadata): void {
-        if (metadata.workitemUrl) {
-            const urlWorkItemId = this.parseWorkItemIdFromUrl(metadata.workitemUrl);
-            if (urlWorkItemId) {
-                if (metadata.workitemId && metadata.workitemId !== urlWorkItemId) {
-                    throw new Error(
-                        `工作项 ID 不匹配: URL 中的 ID (${urlWorkItemId}) 与指定的 ID (${metadata.workitemId}) 不同`
-                    );
-                }
-                metadata.workitemId = urlWorkItemId;
+        // 如果已有 ID，检查是否是 dummy ID
+        if (metadata.workitemId?.startsWith('dummy-')) {
+            metadata.state = LocalWorkItemState.DUMMY;
+            return;
+        }
+
+        // 从 URL 中解析 ID
+        if (metadata.workitemUrl && !metadata.workitemId) {
+            const id = this.parseWorkItemIdFromUrl(metadata.workitemUrl);
+            if (id) {
+                metadata.workitemId = id;
             }
         }
 

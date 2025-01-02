@@ -75,7 +75,8 @@ export class WorkitemTreeItem extends vscode.TreeItem {
         // 设置命令和上下文
         this.command = this.computeCommand();
         if (this.filePath && (this.workitemId || this.workitemUrl)) {
-            this.contextValue = 'workitem';
+            // 只有非 dummy 工作项才显示同步按钮
+            this.contextValue = this.workitemId?.startsWith('dummy-') ? undefined : 'workitem';
         }
     }
 
@@ -125,10 +126,19 @@ export class WorkitemTreeItem extends vscode.TreeItem {
             case 'failed':
                 return new vscode.ThemeIcon('error', new vscode.ThemeColor('testing.iconFailed')); 
             case 'skipped':
+                // 不再为 dummy 状态显示特殊图标
+                if (this._workitemId?.startsWith('dummy-')) {
+                    // 使用普通图标
+                    return this.getTypeIcon();
+                }
                 return new vscode.ThemeIcon('warning', new vscode.ThemeColor('testing.iconSkipped'));
         }
 
-        // 如果状态是 default，则根据工作项类型显示图标
+        return this.getTypeIcon();
+    }
+
+    private getTypeIcon(): vscode.ThemeIcon {
+        // 根据工作项类型显示图标
         if (this.type) {
             switch (this.type as WorkItemType) {
                 case WorkItemType.BUG:
