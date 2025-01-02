@@ -4,13 +4,20 @@ import { WorkitemTreeItem } from '../views/workitemTreeItem';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import { IFileUploadCache } from '../services/interfaces/IFileUploadCache';
 
 suite('MarkdownParser Test Suite', () => {
     let parser: MarkdownParser;
+    let mockFileUploadCache: IFileUploadCache;
     let tempDir: string;
 
     setup(async () => {
-        parser = new MarkdownParser();
+        mockFileUploadCache = {
+            getUploadedUrl: () => undefined,
+            setUploadedUrl: async () => {},
+            clear: async () => {}
+        };
+        parser = new MarkdownParser(mockFileUploadCache);
         tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'markdown-test-'));
         WorkitemTreeItem.setAdoConfig('testorg', 'testproject');
     });

@@ -13,4 +13,5 @@ export interface IAdoService {
     updateComment(workItemId: string, commentId: string, comment: string): Promise<void>;
     deleteComment(workItemId: string, commentId: string): Promise<void>;
     getWorkItemDetails(id: string): Promise<RemoteWorkItem>;
+    uploadAttachment(workItemId: string, filePath: string): Promise<string>;
 } 

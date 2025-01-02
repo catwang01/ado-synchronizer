@@ -13,6 +13,7 @@ import { SyncLogManager } from './services/implementations/syncLogManager';
 import { WelcomeViewProvider } from './views/welcomeViewProvider';
 import { assert } from 'console';
 import { SyncLogEntry } from './services/interfaces/ISyncLogManager';
+import { FileUploadCache } from './services/implementations/fileUploadCache';
 
 // 添加日志类型定义
 interface LogMessage {
@@ -33,7 +34,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// 初始化服务
 	const adoService = new AdoService();
-	const markdownParser = new MarkdownParser();
+	const fileUploadCache = new FileUploadCache(context);
+	const markdownParser = new MarkdownParser(fileUploadCache);
 	const syncStateManager = new SyncStateManager(context);
 	const syncLogManager = new SyncLogManager(context);
 	assert(adoOrganization && adoProject, 'adoOrganization and adoProject must be set');

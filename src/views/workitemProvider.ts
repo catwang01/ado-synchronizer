@@ -254,13 +254,21 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         const existingComments = await this.adoService.getComments(workItemId);
         existingComments.sort((a, b) => a.id.localeCompare(b.id));
 
-        // 创建评论ID到评论的映射
         fileComments.sort((a, b) => a.lineRange?.start! - b.lineRange?.start!);
         const minLength = Math.min(existingComments.length, fileComments.length);
+        
         for (let i = 0; i < minLength; i++) {
             const existingComment = existingComments[i];
             const fileComment = fileComments[i];
-            const htmlContent = this.markdownParser.convertToHtml(fileComment.text);
+            const htmlContent = await this.markdownParser.convertToHtml(
+                fileComment.text,
+                this.adoService,
+                workItemId,
+                filePath,
+                groupId,
+                this.syncLogManager
+            );
+            
             await this.adoService.updateComment(workItemId, existingComment.id, htmlContent);
             this.syncLogManager.addLog(filePath, {
                 timestamp: Date.now(),
@@ -286,7 +294,12 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         if (fileComments.length > existingComments.length) {
             // 添加新的评论
             for (const comment of fileComments.slice(existingComments.length)) {
-                const htmlContent = this.markdownParser.convertToHtml(comment.text);
+                const htmlContent = await this.markdownParser.convertToHtml(
+                    comment.text,
+                    this.adoService,
+                    workItemId
+                );
+                
                 await this.adoService.addComment(workItemId, htmlContent);
                 this.syncLogManager.addLog(filePath, {
                     timestamp: Date.now(),

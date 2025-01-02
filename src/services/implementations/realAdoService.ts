@@ -4,6 +4,9 @@ import { IAdoService } from '../interfaces/IAdoService';
 import { RemoteWorkItem } from '../interfaces/WorkItem';
 import { WorkItemUpdate } from "../interfaces/WorkItemUpdate";
 import { WorkItemComment } from "../interfaces/WorkItemComment";
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import FormData from 'form-data';
 
 export class RealAdoService implements IAdoService {
     private token: string;
@@ -231,6 +234,70 @@ export class RealAdoService implements IAdoService {
             };
         } catch (error) {
             throw new Error(`获取工作项详情失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    async uploadAttachment(workItemId: string, filePath: string): Promise<string> {
+        try {
+            const fileName = path.basename(filePath);
+            const fileContent = await fs.readFile(filePath);
+            
+            // 直接使用 axios 发送二进制数据，不使用 FormData
+            const response = await axios.post(
+                `https://dev.azure.com/${this.organization}/${this.project}/_apis/wit/attachments?fileName=${encodeURIComponent(fileName)}&api-version=7.0`,
+                fileContent,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${this.token}`,
+                        'Content-Type': 'application/octet-stream'
+                    }
+                }
+            );
+
+            // 返回上传后的 URL
+            if (response.data && response.data.url) {
+                return response.data.url;
+            }
+
+            throw new Error('Upload successful but URL not found in response');
+        } catch (error) {
+            let errorMessage = `Failed to upload attachment ${path.basename(filePath)}: `;
+            
+            if (axios.isAxiosError(error)) {
+                const axiosError = error;
+                const details = [
+                    `Status: ${axiosError.response?.status || 'Unknown'}`,
+                    `Message: ${axiosError.message}`,
+                    `Response: ${JSON.stringify(axiosError.response?.data) || 'No response data'}`
+                ];
+
+                // 添加特定的错误处理
+                if (axiosError.response?.status === 401) {
+                    details.push('Authentication failed. Please check your ADO token.');
+                } else if (axiosError.response?.status === 403) {
+                    details.push('Permission denied. Please check your access rights.');
+                } else if (axiosError.response?.status === 413) {
+                    details.push('File is too large. ADO has a file size limit.');
+                } else if (axiosError.response?.status === 400) {
+                    details.push('Bad request. Please check file format and size.');
+                }
+
+                errorMessage += details.join(' | ');
+            } else if (error instanceof Error) {
+                // 文件系统错误等
+                if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+                    errorMessage += 'File not found';
+                } else if ((error as NodeJS.ErrnoException).code === 'EACCES') {
+                    errorMessage += 'Permission denied to read file';
+                } else {
+                    errorMessage += error.message;
+                }
+            } else {
+                errorMessage += String(error);
+            }
+
+            console.error('Upload attachment error:', errorMessage);
+            throw new Error(errorMessage);
         }
     }
 } 
