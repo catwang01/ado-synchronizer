@@ -9,6 +9,7 @@ import { IAdoService } from './interfaces/IAdoService';
 import { IFileUploadCache } from './interfaces/IFileUploadCache';
 import { ISyncLogManager } from './interfaces/ISyncLogManager';
 import * as vscode from 'vscode';
+import { log } from '../utils';
 
 export interface CommentSection {
     id?: string;  // ADO comment ID
@@ -44,6 +45,7 @@ export class MarkdownParser {
     }
 
     private getAbsolutePath(relativePath: string, markdownFilePath?: string): string {
+        log(`Resolving path: ${relativePath} with markdown file: ${markdownFilePath}`, 'DEBUG');
         // 如果设置了资源根目录，基于资源根目录解析
         if (this.resourceRoot) {
             return path.resolve(this.resourceRoot, relativePath.replace(/^\/+/, ''));
@@ -109,7 +111,7 @@ export class MarkdownParser {
                             }
                         }
                     } catch (error) {
-                        console.error(`Failed to upload file ${absolutePath}:`, error);
+                        log(`Failed to upload file ${absolutePath}: ${error}`, 'ERROR');
                         if (syncLogManager && filePath && groupId) {
                             syncLogManager.addLog(filePath, {
                                 timestamp: Date.now(),

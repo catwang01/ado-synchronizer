@@ -7,6 +7,7 @@ import { WorkItemComment } from "../interfaces/WorkItemComment";
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import FormData from 'form-data';
+import { log } from '../../utils';
 
 export class RealAdoService implements IAdoService {
     private token: string = '';
@@ -242,6 +243,8 @@ export class RealAdoService implements IAdoService {
     async uploadAttachment(workItemId: string, filePath: string): Promise<string> {
         try {
             const fileName = path.basename(filePath);
+            log(`Uploading attachment: ${fileName} for work item ${workItemId}`, 'DEBUG');
+
             const fileContent = await fs.readFile(filePath);
             
             // 直接使用 axios 发送二进制数据，不使用 FormData
@@ -258,6 +261,7 @@ export class RealAdoService implements IAdoService {
 
             // 返回上传后的 URL
             if (response.data && response.data.url) {
+                log(`Successfully uploaded attachment: ${fileName}`, 'DEBUG');
                 return response.data.url;
             }
 
@@ -298,7 +302,7 @@ export class RealAdoService implements IAdoService {
                 errorMessage += String(error);
             }
 
-            console.error('Upload attachment error:', errorMessage);
+            log(`Upload attachment error: ${errorMessage}`, 'ERROR');
             throw new Error(errorMessage);
         }
     }

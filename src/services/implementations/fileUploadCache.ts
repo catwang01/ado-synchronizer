@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { IFileUploadCache } from '../interfaces/IFileUploadCache';
+import { log } from '../../utils';
 
 interface CacheData {
     uploadedFiles: { [key: string]: string };
@@ -30,7 +31,7 @@ export class FileUploadCache implements IFileUploadCache {
             await fs.mkdir(path.dirname(this.cachePath), { recursive: true });
             await fs.writeFile(this.cachePath, JSON.stringify(this.cache, null, 2));
         } catch (error) {
-            console.error('Failed to save cache:', error);
+            log(`Failed to save cache:, ${(error as Error).message}`, 'ERROR');
         }
     }
 

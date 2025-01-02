@@ -24,12 +24,14 @@ interface LogMessage {
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
-	// 检查配置
+	// check settings
 	const config = vscode.workspace.getConfiguration('markdown-ado-sync');
-	const adoToken = config.get<string>('adoToken');
 	const adoOrganization = config.get<string>('adoOrganization');
 	const adoProject = config.get<string>('adoProject');
-	log(`adoToken: ${adoToken}\nadoOrganization: ${adoOrganization}\nadoProject: ${adoProject}`);
+	const resourceRoot = config.get<string>('resourceRoot');
+	const scanPaths = config.get<string[]>('scanPaths') || [];
+	const processType = config.get<string>('processType');
+	log(`adoOrganization: ${adoOrganization}\nadoProject: ${adoProject}\nresourceRoot: ${resourceRoot}\nscanPaths: ${scanPaths}\nprocessType: ${processType}`);
 
 	// 初始化服务
 	const adoService = new AdoService();
