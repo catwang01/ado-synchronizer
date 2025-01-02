@@ -14,11 +14,14 @@ export class RealAdoService implements IAdoService {
     private project: string;
     private client: any;
 
+    private get config(): vscode.WorkspaceConfiguration {
+        return vscode.workspace.getConfiguration('markdown-ado-sync');
+    }
+
     constructor() {
-        const config = vscode.workspace.getConfiguration('markdown-ado-sync');
-        this.token = config.get<string>('adoToken') || '';
-        this.organization = config.get<string>('adoOrganization') || '';
-        this.project = config.get<string>('adoProject') || '';
+        this.token = this.config.get<string>('adoToken') || '';
+        this.organization = this.config.get<string>('adoOrganization') || '';
+        this.project = this.config.get<string>('adoProject') || '';
         this.updateClient();
     }
 

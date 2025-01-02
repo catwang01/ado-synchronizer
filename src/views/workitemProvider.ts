@@ -17,7 +17,6 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
     readonly onDidChangeTreeData: vscode.Event<WorkitemTreeItem | WorkitemGroup | LogEntryGroupTreeItem | undefined> = this._onDidChangeTreeData.event;
 
     private itemMap: Map<string, WorkitemTreeItem> = new Map();
-    private _scanPaths: string[] = [];
     private _stateFilters: Set<string> = new Set();
 
     constructor(
@@ -26,8 +25,11 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
         private syncStateManager: SyncStateManager,
         private syncLogManager: ISyncLogManager
     ) {
-        this._scanPaths = vscode.workspace.getConfiguration('markdown-ado-sync').get<string[]>('scanPaths') || [];
         this._stateFilters = new Set(['Started', 'Proposed', 'Committed', 'Dummy']);
+    }
+
+    private get _scanPaths(): string[] {
+        return vscode.workspace.getConfiguration('markdown-ado-sync').get<string[]>('scanPaths') || [];
     }
 
     get scanPaths(): string[] {
