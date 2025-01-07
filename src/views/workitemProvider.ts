@@ -401,9 +401,16 @@ export class WorkitemProvider implements vscode.TreeDataProvider<WorkitemTreeIte
                 }
             }
 
+            const htmlDescription = await this.markdownParser.convertToHtml(
+                description,
+                this.adoService,
+                metadata.workitemId!,
+                filePath,
+                groupId
+            );
             await this.adoService.updateWorkItem(metadata.workitemId!, {
                 title: metadata.title,
-                description: description,
+                description: htmlDescription,
                 state: adoState
             });
 
