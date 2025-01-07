@@ -324,7 +324,7 @@ export class MarkdownParser {
     }
 
     parseContent(content: string): ParsedMarkdown {
-        const sections = content.split(/\n===+\n/);
+        const sections = content.split(/\r?\n===+\r?\n/);
         const firstSection = sections[0];
 
         const metadata = this.parseMetadataFromContent(firstSection);
